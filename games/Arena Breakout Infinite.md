@@ -66,3 +66,4 @@ A raid can produce **both** a recap and separate moment shorts for its best figh
 - Avoid scoreboard/spectate cards showing other players' names where you can.
 - Clips are horizontal, full-frame, at the source resolution. Layout hints for the merger's vertical Shorts: none (= `crop`) for gameplay, `blur` for inventory screens (wide UI), `center` for the end screen.
 - Example short title using the end screen: "2 Operators Down, 375K Loot Extracted". Use Operators Elim'd, never Total Eliminations.
+- Fights sheets (PROCEDURE step 5, `--fights`): NPC fights and looting are loud too, so many windows are scav fights or inventory screens after a fight. Use them to spot fights, then check operator kills with the "Operators Eliminated" counter as above. Tested on "Arena Breakout Infinite 2026.07.05 - 21.03.25.01" (84 min): 70 windows, 21 fights sheets + 11 overview sheets.

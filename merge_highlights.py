@@ -25,6 +25,8 @@ Formats (the clips themselves are horizontal, full resolution):
                         Each segment is framed by its clips.json "layout" hint:
                         crop (zoom on the action, default) | blur (whole frame) | center
   --format long         horizontal video, --size WxH (default 1920x1080), no length cap
+  --hq                  1440p output: Shorts 1440x2560, long 2560x1440 (bitrate scaled up).
+                        YouTube gives 1440p+ uploads a better encode; worth an A/B test.
 
 Options:
   --folder DIR          use every short in DIR (clips.json gives scores, order and times)
@@ -88,12 +90,13 @@ def probe(path, size=False):
 FG = {"crop": "crop=ih*4/5:ih", "blur": "null", "center": "crop=iw*0.48:ih*0.75:iw*0.26:ih*0.2"}
 
 
-def vertical(inp, out, layout, tag):
+def vertical(inp, out, layout, tag, W=1080, H=1920):
     fg = FG.get(layout, FG["crop"])
+    bw, bh = W // 4, H // 4
     return (f"[{inp}]split[{tag}a][{tag}b];"
-            f"[{tag}a]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,"
-            f"boxblur=10:2,scale=1080:1920,setsar=1[{tag}bg];"
-            f"[{tag}b]{fg},scale=1080:-2,setsar=1[{tag}fg];"
+            f"[{tag}a]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+            f"boxblur=10:2,scale={W}:{H},setsar=1[{tag}bg];"
+            f"[{tag}b]{fg},scale={W}:-2,setsar=1[{tag}fg];"
             f"[{tag}bg][{tag}fg]overlay=0:(H-h)/2[{out}]")
 
 
@@ -408,14 +411,14 @@ def build_graph(items, a, music_idx, music_info, total):
             spans = [(max(0.0, t0 - it["in"]), min(it["length"], t1 - it["in"]), lay)
                      for t0, t1, lay in layout_spans(it) if t1 > it["in"] and t0 < it["in"] + it["length"]]
             if len({lay for _, _, lay in spans}) <= 1:
-                f.append(vertical(f"{i}:v", f"l{i}", spans[0][2] if spans else "crop", f"c{i}"))
+                f.append(vertical(f"{i}:v", f"l{i}", spans[0][2] if spans else "crop", f"c{i}", W, H))
             else:
                 # different framing per segment: split by time, frame each, join back
                 n = len(spans)
                 f.append(f"[{i}:v]split={n}" + "".join(f"[s{i}_{j}]" for j in range(n)))
                 for j, (t0, t1, lay) in enumerate(spans):
                     f.append(f"[s{i}_{j}]trim=start={t0:.3f}:end={t1:.3f},setpts=PTS-STARTPTS[t{i}_{j}]")
-                    f.append(vertical(f"t{i}_{j}", f"p{i}_{j}", lay, f"c{i}_{j}"))
+                    f.append(vertical(f"t{i}_{j}", f"p{i}_{j}", lay, f"c{i}_{j}", W, H))
                 f.append("".join(f"[p{i}_{j}]" for j in range(n)) + f"concat=n={n}:v=1:a=0[l{i}]")
             f.append(f"[l{i}]{norm}")
         if it["has_audio"]:
@@ -489,7 +492,10 @@ def main():
     ap.add_argument("--music-start", type=float)
     ap.add_argument("--seed", type=int)
     ap.add_argument("--format", choices=["short", "long"], default="short")
-    ap.add_argument("--size", default="1920x1080", help="long format output size (default 1920x1080)")
+    ap.add_argument("--size", help="long format output size (default 1920x1080, 2560x1440 with --hq)")
+    ap.add_argument("--hq", action="store_true",
+                    help="1440p output (Shorts 1440x2560, long 2560x1440): YouTube gives 1440p+ "
+                         "uploads a higher-quality encode")
     ap.add_argument("--style", choices=["punchy", "clean"], default="punchy")
     ap.add_argument("--transition")
     ap.add_argument("--no-trim", dest="trim", action="store_false")
@@ -507,11 +513,13 @@ def main():
     a = ap.parse_args()
 
     if a.format == "short":
-        a.W, a.H = 1080, 1920
+        a.W, a.H = (1440, 2560) if a.hq else (1080, 1920)
         if a.max_length is None:
             a.max_length = SHORTS_MAX
     else:
-        a.W, a.H = (int(x) for x in a.size.lower().split("x"))
+        a.W, a.H = (int(x) for x in (a.size or ("2560x1440" if a.hq else "1920x1080")).lower().split("x"))
+    # 12 Mb/s at 1080p, scaled with the pixel count (about 21 Mb/s at 1440p)
+    a.mbps = max(12, round(12 * a.W * a.H / (1920 * 1080)))
     items = load_items(a)
     if len(items) < 2:
         sys.exit("need at least 2 clips")
@@ -587,7 +595,7 @@ def main():
     fcfile.write_text(fc, encoding="utf-8")
     # "-/filter_complex <file>" reads the graph from a file (ffmpeg 7+; graphs get long)
     cmd += ["-/filter_complex", str(fcfile), "-map", "[vout]", "-map", "[aout]",
-            "-t", f"{total:.3f}", "-c:v", "h264_amf", "-quality", "quality", "-b:v", "12M",
+            "-t", f"{total:.3f}", "-c:v", "h264_amf", "-quality", "quality", "-b:v", f"{a.mbps}M",
             "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
