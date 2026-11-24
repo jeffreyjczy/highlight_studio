@@ -1,0 +1,8 @@
+{
+  "hook_language": "en",
+  "youtube_language": "en",
+  "hook_overlay": false,
+  "hook_duration_seconds": 2.5,
+  "always_hashtags": ["#gaming"],
+  "_notes": "Languages: \"en\" (English), \"th\" (Thai) or \"both\" (Thai hook with an English title, etc.). Read by the highlight-maker agent."
+}
