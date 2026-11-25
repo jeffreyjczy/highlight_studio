@@ -43,6 +43,17 @@ const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 20 20" aria-hid
 
 /* ---------- state ---------- */
 let K = '';
+const DEMO = /demo/.test(location.hash);  // dev only: --open page:demo fills queue and jobs with long sample labels
+const DEMO_JOBS = [
+  {id: 'demo1', kind: 'highlight', state: 'running', path: 'demo', title: 'Valorant 2026.08.01 - 16.15.54.03', model: 'sonnet', step: 3,
+   steps: ['Claim', 'Probe', 'Analyze', 'Plan clips', 'Render', 'Check', 'Finish'], elapsed: 372,
+   activity: 'python valorant_plan.py "E:\\Recordings\\Valorant\\Valorant 2026.08.01 - 16.15.54.03.mp4" "C:\\Work\\highlight-work\\Valorant_2026.08.01-16.15.54.03\\kills.json" --match "1=Breeze/Viper" --match "2=Sunset/Reyna"'},
+  {id: 'demo2', kind: 'merge', state: 'running', path: 'demo', title: 'A very long merged video name for the weekend Valorant and Arena Breakout montage', clips: [1, 2, 3, 4],
+   music: 'E:\\Music\\Highlights\\tonytonychopper999 - FEEL THE RUSH [NCS Release].mp3', step: 1, steps: ['Read clips', 'Beat-sync', 'Plan cuts', 'Encode', 'Finish'], elapsed: 41,
+   activity: 'music: tonytonychopper999 - FEEL THE RUSH [NCS Release].mp3  140.0 BPM, starts at 3.42s'},
+  {id: 'demo3', kind: 'highlight', state: 'failed', path: 'demo', title: 'Arena Breakout Infinite 2026.07.05 - 14.50.12.33', model: 'default', step: 2, steps: ['Claim'], elapsed: 95,
+   error: 'ffmpeg exited with code 1: E:\\Recordings\\Arena Breakout Infinite\\Arena Breakout Infinite 2026.07.05 - 14.50.12.33.mp4: Invalid data found when processing input'},
+];
 const D = {footage: [], sets: [], merged: [], tracks: [], jobs: [], watch: {waiting: [], ytal: false}, disk: null, claude: {}, roots: {}, loaded: {}};
 const S = {page: 'footage', view: 'grid', q: '', status: 'all', sort: 'newest', minScore: 0,
   sel: {footage: new Set(), shorts: new Set(), music: new Set()}, queue: [], queueOpen: false, jobsOpen: false,
@@ -311,11 +322,12 @@ const QCOL = ['var(--accent)', 'var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g0)
 function trackLabel(t) { return `${t.artist ? t.artist + ' - ' : ''}${t.title || t.file}`; }
 function renderQueue() {
   const el = $('#queue'); el.hidden = !S.queueOpen; if (!S.queueOpen) return;
+  el.style.width = (S.queueW || 340) + 'px';
   const items = S.queue.map(clipOfPath).filter(Boolean), total = items.reduce((a, c) => a + c.len, 0);
   const limit = S.merge.fmt === 'short' ? 180 : null, scale = limit ? Math.max(limit, total) : Math.max(total, 1);
   let acc = 0;
   const usable = D.tracks.filter(t => t.credit_state !== 'missing');
-  el.innerHTML = `<div class="qhead"><h2>Merge queue</h2><span class="grow"></span>${items.length ? '<button class="linkbtn" data-action="q-clear">Clear</button>' : ''}<button class="iconbtn" data-action="toggle-queue" aria-label="Hide merge queue">${ic('x')}</button></div>
+  el.innerHTML = `<div class="qresize" title="Drag to resize. Double-click to reset." role="separator" aria-orientation="vertical" aria-label="Resize merge queue"></div><div class="qhead"><h2>Merge queue</h2><span class="grow"></span>${items.length ? '<button class="linkbtn" data-action="q-clear">Clear</button>' : ''}<button class="iconbtn" data-action="toggle-queue" aria-label="Hide merge queue">${ic('x')}</button></div>
   ${items.length ? `<ol class="qlist" id="qlist">${items.map(c => `<li class="qitem" draggable="true" data-qp="${esc(c.path)}">
     <span class="grip" title="Drag to reorder">${ic('grip')}</span><span class="mini"><img src="${thumbUrl(c.path, 0.4)}" alt="" draggable="false"></span>
     <span class="t"><b title="${esc(c.title)}">${esc(c.title)}</b><span class="num">${dur(c.len)}${c.score != null ? `, score ${c.score}` : ''}, ${esc(c.game)}</span></span>
@@ -334,7 +346,24 @@ function renderQueue() {
   <div class="qactions"><button class="btn" data-action="preview" ${items.length < 2 ? 'disabled' : ''}>${ic('eye')}Preview cuts</button><button class="btn primary" data-action="merge" ${items.length < 2 ? 'disabled' : ''} title="${items.length < 2 ? 'Add at least 2 shorts' : ''}">${ic('stack')}Merge</button></div>`;
   bindDrag();
 }
-function saveQueue() { lsSet('queue', S.queue); }
+function saveQueue() { if (!DEMO) lsSet('queue', S.queue); }
+/* resize the merge queue by dragging its left edge; double-click the edge to reset */
+const QMIN = 280, QDEF = 340, qMax = () => Math.max(QMIN, Math.min(900, window.innerWidth - 460));
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('.qresize'); if (!h || e.button !== 0) return;
+  e.preventDefault();
+  const q = $('#queue'), startX = e.clientX, startW = q.getBoundingClientRect().width;
+  h.classList.add('dragging'); document.body.classList.add('resizing');
+  const move = ev => { S.queueW = Math.round(Math.max(QMIN, Math.min(qMax(), startW + (startX - ev.clientX)))); q.style.width = S.queueW + 'px'; };
+  const up = () => { window.removeEventListener('pointermove', move); h.classList.remove('dragging'); document.body.classList.remove('resizing'); lsSet('queueW', S.queueW); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up, {once: true});
+});
+document.addEventListener('dblclick', e => {
+  if (!e.target.closest('.qresize')) return;
+  S.queueW = QDEF; lsSet('queueW', QDEF); const q = $('#queue'); if (q) q.style.width = QDEF + 'px';
+});
+window.addEventListener('resize', () => { if (S.queueW && S.queueW > qMax()) { S.queueW = qMax(); const q = $('#queue'); if (q) q.style.width = S.queueW + 'px'; } });
 function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
@@ -726,7 +755,7 @@ async function copyText(text, el) {
 /* ---------- jobs polling ---------- */
 async function pollJobs() {
   let r; try { r = await API().jobs(); } catch (_) { return; }
-  D.jobs = r.jobs; D.watch = r.watch;
+  D.jobs = DEMO ? [...DEMO_JOBS, ...r.jobs] : r.jobs; D.watch = r.watch;
   let reloadF = false, reloadS = false, reloadM = false;
   for (const j of D.jobs) {
     const prev = prevJobState.get(j.id);
@@ -945,7 +974,7 @@ async function boot() {
   setTheme(S.settings.theme || 'system');
   S.page = ['footage', 'shorts', 'merged', 'music', 'settings'].includes(S.settings.last_page) ? S.settings.last_page : 'footage';
   Object.assign(S.merge, S.settings.merge || {});
-  S.queue = lsGet('queue', []); S.view = lsGet('view', 'grid'); S.sort = lsGet('sort', 'newest'); S.collapsed = new Set(lsGet('collapsed', []));
+  S.queue = lsGet('queue', []); S.queueW = lsGet('queueW', QDEF); S.view = lsGet('view', 'grid'); S.sort = lsGet('sort', 'newest'); S.collapsed = new Set(lsGet('collapsed', []));
   const open = /open=([a-z]+)(?::([a-z]+))?/.exec(location.hash || '');
   if (open) { S.page = open[1]; if (open[2] === 'queue') S.queueOpen = true; else if (open[2] === 'jobs') S.jobsOpen = true; else if (open[2] && S.page === 'music') S.musicTab = open[2]; }
   S.queueOpen = S.queueOpen || (S.page === 'shorts' && S.queue.length > 0);
@@ -955,6 +984,11 @@ async function boot() {
   render();
   if (S.page === 'music' && S.musicTab === 'ncs') ncsSearch();
   if (open && open[2] === 'playbooks') openPlaybooks();
+  if (DEMO) {
+    const long = D.sets.flatMap(s => s.clips).sort((a, b) => b.title.length - a.title.length).slice(0, 4);
+    S.queue = long.map(c => c.path); S.merge.name = 'A very long merged video name for the weekend Valorant and Arena Breakout montage';
+    S.queueOpen = true; S.jobsOpen = open[2] !== 'demoq'; render();
+  }
   if (open && open[2] === 'detail' && S.page === 'footage') {
     const r = D.footage.find(x => x.status === 'done') || D.footage[0]; if (r) { S.detailRec = r.id; render(); }
   }
