@@ -158,18 +158,21 @@ document.addEventListener('loadstart', e => {
 }, true);
 
 /* ---------- shell ---------- */
+// only touch the DOM when the markup really changed (renderTop runs every second)
+function setHTML(el, html) { if (el && el._html !== html) { el.innerHTML = html; el._html = html; } }
+function setAttr(el, k, v) { if (el && el.getAttribute(k) !== String(v)) el.setAttribute(k, v); }
 function renderTop() {
   const d = D.disk;
   if (d && d.total) {
     const used = 1 - d.free / d.total;
-    $('#disk').className = 'disk num' + (d.free < 20e9 ? ' low' : '');
-    $('#disk').innerHTML = `${ic('disk')}<span>${esc(d.drive)} ${size(d.free)} free of ${size(d.total)}</span><span class="bar"><i style="width:${(used * 100).toFixed(0)}%"></i></span>`;
+    const cls = 'disk num' + (d.free < 20e9 ? ' low' : ''); if ($('#disk').className !== cls) $('#disk').className = cls;
+    setHTML($('#disk'), `${ic('disk')}<span>${esc(d.drive)} ${size(d.free)} free of ${size(d.total)}</span><span class="bar"><i style="width:${(used * 100).toFixed(0)}%"></i></span>`);
   }
   const active = D.jobs.filter(j => j.state === 'running' || j.state === 'queued').length;
-  $('#jBtn').innerHTML = `${active ? ic('loader', 'spin') : ic('activity')}<span>Jobs</span><span class="count num ${active ? '' : 'zero'}">${active}</span>`;
-  $('#jBtn').setAttribute('aria-pressed', S.jobsOpen);
-  $('#qBtn').innerHTML = `${ic('queue')}<span>Merge queue</span><span class="count num ${S.queue.length ? '' : 'zero'}">${S.queue.length}</span>`;
-  $('#qBtn').setAttribute('aria-pressed', S.queueOpen);
+  setHTML($('#jBtn'), `${active ? ic('loader', 'spin') : ic('activity')}<span>Jobs</span><span class="count num ${active ? '' : 'zero'}">${active}</span>`);
+  setAttr($('#jBtn'), 'aria-pressed', S.jobsOpen);
+  setHTML($('#qBtn'), `${ic('queue')}<span>Merge queue</span><span class="count num ${S.queue.length ? '' : 'zero'}">${S.queue.length}</span>`);
+  setAttr($('#qBtn'), 'aria-pressed', S.queueOpen);
 }
 function renderNav() {
   const nClips = D.sets.reduce((a, s) => a + s.clips.length, 0);
@@ -221,14 +224,14 @@ function recCard(r) {
   return `<div class="card ${sel ? 'selected' : ''} ${dis ? 'disabled' : ''} ${S.detailRec === r.id ? 'open' : ''}" data-action="card" data-id="${r.id}" data-kind="footage" title="${esc(r.file)}">
     ${thumbBox(r.path, r.dur, 0.1, extra)}
     <div class="cname">${esc(when(r.recorded))}</div>
-    <div class="cmeta num"><span>${size(r.size)}</span>${r.res ? `<span>${esc(r.res)}</span>` : ''}${st === 'failed' && r.reason ? `<span class="bad" title="${esc(r.reason)}">${esc(r.reason.slice(0, 60))}</span>` : ''}</div></div>`;
+    <div class="cmeta num"><span data-rsize="${r.id}">${size(r.size)}</span>${r.res ? `<span>${esc(r.res)}</span>` : ''}${st === 'failed' && r.reason ? `<span class="bad" title="${esc(r.reason)}">${esc(r.reason.slice(0, 60))}</span>` : ''}</div></div>`;
 }
 function recRow(r) {
   const sel = S.sel.footage.has(r.id), dis = !selectable(r), st = effStatus(r);
   const label = st === 'done' && r.clips != null ? plural(r.clips, 'short') : (STATUS[st] || st);
   return `<tr class="${sel ? 'selected' : ''}" data-action="card" data-id="${r.id}" data-kind="footage">
     <td>${dis ? '' : `<button class="boxchk" data-action="check" data-id="${r.id}" data-kind="footage" role="checkbox" aria-checked="${sel}" aria-label="Select">${ic('check')}</button>`}</td>
-    <td class="name" title="${esc(r.file)}">${esc(r.file)}</td><td class="r num">${dur(r.dur)}</td><td class="r num">${size(r.size)}</td><td>${esc(r.res)}</td>
+    <td class="name" title="${esc(r.file)}">${esc(r.file)}</td><td class="r num">${dur(r.dur)}</td><td class="r num" data-rsize="${r.id}">${size(r.size)}</td><td>${esc(r.res)}</td>
     <td class="num">${esc(when(r.recorded))}</td><td><span class="tpill st-${st}">${esc(label)}</span></td></tr>`;
 }
 function pageFootage() {
@@ -1162,14 +1165,25 @@ async function boot() {
     const r = D.footage.find(x => x.status === 'done') || D.footage[0]; if (r) { S.detailRec = r.id; render(); }
   }
   refreshYt().then(() => { if (S.page === 'settings') render(); });
-  setInterval(pollJobs, 1000);
-  setInterval(loadDisk, 30000);
+  // polling: jobs every second while something runs, every 4 s when idle; nothing but
+  // a slow jobs check while the window is minimised or hidden
+  let tick = 0;
+  setInterval(() => {
+    tick++;
+    const busy = D.jobs.some(j => j.state === 'running' || j.state === 'queued') || (D.watch && (D.watch.waiting.length || D.watch.ytal));
+    if (document.hidden ? tick % 10 === 0 : (busy || tick % 4 === 0)) pollJobs();
+  }, 1000);
+  setInterval(() => { if (!document.hidden) loadDisk(); }, 30000);
   setInterval(async () => {  // pick up new or finished recordings without a manual refresh
-    if (S.page !== 'footage' || dlg.open || document.querySelector('.card:hover')) return;
-    const before = JSON.stringify(D.footage.map(r => [r.id, r.status, r.size]));
+    if (document.hidden || S.page !== 'footage' || dlg.open || document.querySelector('.card:hover')) return;
+    const sig = () => JSON.stringify(D.footage.map(r => [r.id, r.status, r.status === 'recording' ? 0 : r.size]));
+    const before = sig();
     await loadFootage();
-    if (JSON.stringify(D.footage.map(r => [r.id, r.status, r.size])) !== before) render();
+    if (sig() !== before) return render();
+    // only a recording in progress grew: update its size text, no re-render
+    for (const r of D.footage) if (r.status === 'recording') document.querySelectorAll(`[data-rsize="${r.id}"]`).forEach(el => { el.textContent = size(r.size); });
   }, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollJobs(); loadDisk(); } });
 }
 if (window.pywebview && window.pywebview.api) boot(); else window.addEventListener('pywebviewready', boot);
 })();
