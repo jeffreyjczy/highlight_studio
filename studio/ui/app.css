@@ -375,8 +375,10 @@ dialog:focus,dialog:focus-visible{outline:none}
 .pb-list button[aria-current="true"]{background:var(--card);box-shadow:0 0 0 1px var(--stroke)}
 .pb-list button[aria-current="true"]::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:3px;border-radius:2px;background:var(--accent)}
 .pb-list span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pb-main{overflow:auto;padding:20px 32px 40px;min-width:0}
-.pb-head{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.pb-main{overflow:auto;padding:0 32px 40px;min-width:0}
+/* the title and close button stay put while the playbook scrolls */
+.pb-head{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;margin:0 -32px 16px;padding:20px 32px 14px;
+  position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--stroke)}
 .pb-head h2{margin:0;font:600 26px/34px var(--font-display)}
 .pb-head p{margin:4px 0 0;color:var(--fg2);font-size:13px;max-width:720px}
 .pb-acts{display:flex;gap:6px;align-items:center;flex:none}
@@ -387,7 +389,7 @@ dialog:focus,dialog:focus-visible{outline:none}
 .md{max-width:780px;font-size:14px;line-height:23px;color:var(--fg)}
 .md>h1:first-child{display:none}
 .md h1{font:600 22px/30px var(--font-display);margin:20px 0 8px}
-.md h2{font:600 19px/26px var(--font-display);margin:28px 0 8px;padding-top:16px;border-top:1px solid var(--stroke);scroll-margin-top:12px}
+.md h2{font:600 19px/26px var(--font-display);margin:28px 0 8px;padding-top:16px;border-top:1px solid var(--stroke);scroll-margin-top:96px}
 .md h3{font:600 15px/22px var(--font-display);margin:20px 0 6px}
 .md p{margin:8px 0}
 .md ul,.md ol{padding-left:24px;margin:6px 0}
