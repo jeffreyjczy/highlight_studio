@@ -11,6 +11,9 @@ from pathlib import Path
 
 from common import CLAUDE, DATA, NO_WINDOW, PIPE, PYTHON, SETTINGS, ledger
 
+HISTORY = DATA / "jobs.json"   # finished jobs are kept here so they show again after a restart
+HISTORY_MAX = 100
+
 AGENT_TOOLS = "PowerShell,Bash,Read,Write,Edit,Glob,Grep"  # the highlight-maker's own tool list
 HL_STEPS = ["Claim", "Probe", "Analyze", "Plan clips", "Render", "Check", "Finish"]
 MERGE_STEPS = ["Read clips", "Beat-sync", "Plan cuts", "Encode", "Finish"]
@@ -56,6 +59,7 @@ class Jobs:
         self.lock = threading.RLock()
         self.procs = {}
         self.on_change = on_change or (lambda: None)
+        self._load()
         threading.Thread(target=self._scheduler, daemon=True).start()
 
     # ------------------------------------------------------------ public
@@ -78,6 +82,7 @@ class Jobs:
             j = self._new("highlight", path=rec_path, game=game, model=model or "default",
                           title=Path(rec_path).stem, steps=HL_STEPS)
             self.jobs.insert(0, j)
+        self._save()
         return j["id"]
 
     def add_merge(self, out, clips, args, name, music):
@@ -85,6 +90,7 @@ class Jobs:
             j = self._new("merge", path=str(out), title=name, steps=MERGE_STEPS, clips=clips, music=music)
             j["_args"] = args
             self.jobs.insert(0, j)
+        self._save()
         return j["id"]
 
     def add_upload(self, path, meta):
@@ -92,6 +98,7 @@ class Jobs:
             j = self._new("upload", path=str(path), title=meta["title"], steps=["Upload", "Finish"], meta=meta,
                           progress=0.0, privacy=meta.get("privacy"))
             self.jobs.insert(0, j)
+        self._save()
         return j["id"]
 
     def cancel(self, jid):
@@ -101,6 +108,7 @@ class Jobs:
                 return False
             if j["state"] == "queued":
                 j.update(state="cancelled", ended=time.time(), error="Cancelled before it started")
+                self._save()
                 return True
             if j["state"] != "running":
                 return False
@@ -113,6 +121,32 @@ class Jobs:
     def clear_finished(self):
         with self.lock:
             self.jobs = [j for j in self.jobs if j["state"] in ("queued", "running")]
+        self._save()
+
+    # ------------------------------------------------------------ history (survives closing the app)
+    def _load(self):
+        try:
+            saved = json.loads(HISTORY.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        for j in saved:
+            if j.get("state") in ("queued", "running"):  # the app was closed while it ran
+                j.update(state="failed" if j["state"] == "running" else "cancelled",
+                         ended=j.get("ended") or j.get("started") or time.time(),
+                         error=j.get("error") or "Stopped because the app was closed")
+            self.jobs.append(j)
+
+    def _save(self):
+        with self.lock:
+            keep = [{k: v for k, v in j.items() if not k.startswith("_")} for j in self.jobs]
+            done = [j for j in keep if j["state"] not in ("queued", "running")][:HISTORY_MAX]
+            keep = [j for j in keep if j["state"] in ("queued", "running")] + done
+        try:
+            tmp = HISTORY.with_suffix(".tmp")
+            tmp.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, HISTORY)
+        except OSError:
+            pass
 
     # ------------------------------------------------------------ internals
     def _new(self, kind, **kw):
@@ -136,6 +170,7 @@ class Jobs:
                 if not nxt:
                     continue
                 nxt.update(state="running", started=time.time(), activity="Starting")
+            self._save()
             target = {"highlight": self._run_highlight, "merge": self._run_merge, "upload": self._run_upload}[nxt["kind"]]
             threading.Thread(target=self._guard, args=(target, nxt), daemon=True).start()
 
@@ -145,12 +180,14 @@ class Jobs:
         except Exception as e:  # never leave a job stuck in "running"
             with self.lock:
                 j.update(state="failed", error=f"{type(e).__name__}: {e}", ended=time.time())
+        self._save()
         self.on_change()
 
     def _finish(self, j, state, **kw):
         with self.lock:
             j.update(state=state, ended=time.time(), **kw)
             self.procs.pop(j["id"], None)
+        self._save()
 
     # ------------------------------------------------------------ highlight
     def _run_highlight(self, j):
