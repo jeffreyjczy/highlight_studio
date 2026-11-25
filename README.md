@@ -39,4 +39,4 @@ Claude runs use the account signed in to the Claude Code CLI. No API key is used
 - YouTube upload: create your own Google Cloud OAuth client of type "Desktop app". The in-app guide at Settings → YouTube → Set up walks through it.
 
 ## Privacy
-No credentials are stored in this repository. The YouTube sign-in token and OAuth client file live only in `%LOCALAPPDATA%\HighlightStudio\youtube\` on the user's PC. [`studio/site/`](studio/site/) holds the app's home page and privacy policy for the Google consent screen.
+No credentials are stored in this repository. The YouTube sign-in token and OAuth client file live only in `%LOCALAPPDATA%\HighlightStudio\youtube\` on the user's PC. [`docs/`](docs/) holds the app's home page and privacy policy for the Google consent screen, served by GitHub Pages at https://jeffreyjczy.github.io/highlight_studio/.
