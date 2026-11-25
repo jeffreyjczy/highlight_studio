@@ -733,8 +733,7 @@ function buildDesc(m) {
   if (t && t.credit_state === 'ready') credit = t.credit;
   else if (m.music && !t) warn = `The music (${base(m.music)}) isn't in your library any more, so its credit isn't known. Add it yourself before posting.`;
   else if (t && t.credit_state === 'missing') warn = `"${trackLabel(t)}" has no credit line. Add one on the Music page first.`;
-  const lines = cs.length > 1 ? cs.map(c => '• ' + c.title).join('\n') : (cs[0] ? cs[0].desc || '' : '');
-  return {txt: [m.name, lines, credit, tagList.join(' ')].filter(Boolean).join('\n\n'), warn, tagList};
+  return {txt: [m.name, credit, tagList.join(' ')].filter(Boolean).join('\n\n'), warn, tagList};
 }
 function descDialog(m) {
   const {txt, warn} = buildDesc(m);
