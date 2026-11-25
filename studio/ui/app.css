@@ -340,6 +340,7 @@ dialog.player.portrait{width:auto}
 .player video{display:block;width:100%;max-height:calc(100vh - 140px);background:#000}
 .player.portrait video{height:calc(100vh - 140px);width:auto}
 .pbar{display:flex;align-items:center;gap:12px;padding:8px 10px 8px 16px;background:var(--card);color:var(--fg)}
+.pbar.top{border-bottom:1px solid var(--stroke)}
 .pbar b{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .form{display:grid;gap:12px}
 .form label{display:grid;gap:4px;font-size:13px;color:var(--fg2)}

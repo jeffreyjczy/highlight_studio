@@ -690,8 +690,9 @@ async function doDelete() {
   render();
 }
 function playerDialog(name, path, portrait) {
-  openDialog(`<div class="player ${portrait ? 'portrait' : ''}">${videoBox(path, name, true)}
-   <div class="pbar"><b title="${esc(name)}">${esc(name)}</b><button class="btn sm ghost" data-action="reveal" data-p="${esc(path)}">${ic('folder')}Show in folder</button><button class="iconbtn" data-action="dlg-close" aria-label="Close">${ic('x')}</button></div></div>`, 'player' + (portrait ? ' portrait' : ''));
+  openDialog(`<div class="player ${portrait ? 'portrait' : ''}">
+   <div class="pbar top"><b title="${esc(name)}">${esc(name)}</b><button class="btn sm ghost" data-action="reveal" data-p="${esc(path)}">${ic('folder')}Show in folder</button><button class="iconbtn" data-action="dlg-close" aria-label="Close">${ic('x')}</button></div>
+   ${videoBox(path, name, true)}</div>`, 'player' + (portrait ? ' portrait' : ''));
 }
 async function previewDialog() {
   openDialog(`<div class="dlg-body"><h2>Preview cuts</h2><div class="loading">${ic('loader', 'spin')}Finding the action in each short and syncing to the music. This can take a minute…</div></div>
