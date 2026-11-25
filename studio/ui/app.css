@@ -234,6 +234,14 @@ body.resizing iframe,body.resizing video{pointer-events:none}
 .field .seg button{flex:1 1 0;min-width:0;justify-content:center;overflow:hidden;text-overflow:ellipsis}
 .field .note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .field label{color:var(--fg2)}
+.volacc summary{display:grid;grid-template-columns:16px auto minmax(0,1fr);align-items:center;gap:6px;cursor:pointer;list-style:none;font-size:13px;color:var(--fg2);padding:2px 0;border-radius:var(--r-sm)}
+.volacc summary::-webkit-details-marker{display:none}
+.volacc summary:hover{color:var(--fg)}
+.volacc summary .note{justify-self:end;color:var(--fg3, var(--fg2));font-size:12px}
+.volacc .chev{display:flex;transition:transform .15s}.volacc .chev .ic{width:14px;height:14px}
+.volacc[open] .chev{transform:rotate(90deg)}
+.volacc[open] summary .note{visibility:hidden}
+.volbody{display:grid;gap:10px;padding:10px 0 2px}
 .field input[type=text]{height:30px;padding:0 8px;border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm);background:var(--card);min-width:0;width:100%}
 .field .select{width:100%}
 .switch{width:40px;height:20px;border-radius:10px;border:1px solid var(--fg2);background:transparent;position:relative;padding:0;flex:none}

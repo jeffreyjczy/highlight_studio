@@ -374,8 +374,10 @@ function renderQueue() {
    <div class="field"><label for="musicSel">Music</label><select class="select" id="musicSel"><option value="any" ${S.merge.music === 'any' ? 'selected' : ''}>Shuffle tracks that have a credit${usable.length ? '' : ' (none yet)'}</option>${D.tracks.map(t => `<option value="${esc(t.path)}" ${t.credit_state === 'missing' ? 'disabled' : ''} ${S.merge.music === t.path ? 'selected' : ''}>${esc(trackLabel(t))}${t.credit_state === 'missing' ? ' (add a credit first)' : ''}</option>`).join('')}</select></div>
    <div class="field"><label for="styleSel">Style</label><select class="select" id="styleSel"><option value="punchy" ${S.merge.style === 'punchy' ? 'selected' : ''}>Punchy: zoom and flash on kills</option><option value="clean" ${S.merge.style === 'clean' ? 'selected' : ''}>Clean: plain crossfades</option></select></div>
    <div class="field"><label for="mixSel">Sound</label><select class="select" id="mixSel">${[['music', 'Steady: music plays under the game'], ['balanced', 'Game first: music also dips on shots'], ['musiconly', 'Music only: no game sound']].map(([v, l]) => `<option value="${v}" ${S.merge.mix === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-   ${S.merge.mix === 'musiconly' ? '' : `<div class="field"><label for="mvol">Music volume</label><span class="np-vol mvol" title="Compared with the gameplay, measured per video. 100% = as loud as the game, 50% = half as loud."><input type="range" id="mvol" min="10" max="150" step="5" value="${S.merge.mvol ?? 50}" aria-label="Music volume compared with the game"><span class="num" id="mvolTxt">${S.merge.mvol ?? 50}%</span><span class="note">of game</span></span></div>`}
-   <div class="field"><label for="ovol">Video volume</label><span class="np-vol mvol" title="How loud the finished video is. 100% = YouTube's standard level (-14 LUFS), 50% = half as loud (-20 LUFS)."><input type="range" id="ovol" min="25" max="100" step="5" value="${S.merge.ovol ?? 50}" aria-label="Overall video volume"><span class="num" id="ovolTxt">${S.merge.ovol ?? 50}%</span><span class="note">overall</span></span></div>
+   <details class="volacc" id="volAcc" ${S.volOpen ? 'open' : ''}><summary><span class="chev">${ic('chevron')}</span><span>Volume</span><span class="note num" id="volSum">${S.merge.mix === 'musiconly' ? '' : `Music ${S.merge.mvol ?? 50}% · `}Video ${S.merge.ovol ?? 50}%</span></summary><div class="volbody">
+   ${S.merge.mix === 'musiconly' ? '' : `<div class="field"><label for="mvol">Music</label><span class="np-vol mvol" title="Compared with the gameplay, measured per video. 100% = as loud as the game, 50% = half as loud."><input type="range" id="mvol" min="10" max="150" step="5" value="${S.merge.mvol ?? 50}" aria-label="Music volume compared with the game"><span class="num" id="mvolTxt">${S.merge.mvol ?? 50}%</span><span class="note">of game</span></span></div>`}
+   <div class="field"><label for="ovol">Video</label><span class="np-vol mvol" title="How loud the finished video is. 100% = YouTube's standard level (-14 LUFS), 50% = half as loud (-20 LUFS)."><input type="range" id="ovol" min="25" max="100" step="5" value="${S.merge.ovol ?? 50}" aria-label="Overall video volume"><span class="num" id="ovolTxt">${S.merge.ovol ?? 50}%</span><span class="note">overall</span></span></div>
+   </div></details>
    <div class="field"><label>1440p</label><span style="display:flex;align-items:center;gap:8px"><button class="switch" data-action="hq" role="switch" aria-checked="${S.merge.hq}" aria-label="1440p output"></button><span class="note">${S.merge.hq ? 'Higher quality on YouTube' : '1080p'}</span></span></div>
   </div>
   <div class="qactions"><button class="btn" data-action="preview" ${items.length < 2 ? 'disabled' : ''}>${ic('eye')}Preview cuts</button><button class="btn primary" data-action="merge" ${items.length < 2 ? 'disabled' : ''} title="${items.length < 2 ? 'Add at least 2 shorts' : ''}">${ic('stack')}Merge</button></div>`;
@@ -406,6 +408,9 @@ window.addEventListener('resize', () => {
     if (S[key] && S[key] > qMax()) { S[key] = qMax(); const q = document.getElementById(id); if (q) q.style.width = S[key] + 'px'; }
   }
 });
+function volSum() { const el = $('#volSum'); if (el) el.textContent = `${S.merge.mix === 'musiconly' ? '' : `Music ${S.merge.mvol ?? 50}% · `}Video ${S.merge.ovol ?? 50}%`; }
+// the Volume section remembers whether it is open (the queue is rebuilt often); 'toggle' doesn't bubble
+document.addEventListener('toggle', e => { if (e.target.id === 'volAcc') { S.volOpen = e.target.open; lsSet('volOpen', S.volOpen); } }, true);
 function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix, mvol: S.merge.mvol ?? 50, ovol: S.merge.ovol ?? 50}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
@@ -1131,8 +1136,8 @@ document.addEventListener('dblclick', e => {
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }
   if (e.target.id === 'outName') S.merge.name = e.target.value;
-  if (e.target.id === 'ovol') { S.merge.ovol = +e.target.value; $('#ovolTxt').textContent = e.target.value + '%'; }
-  if (e.target.id === 'mvol') { S.merge.mvol = +e.target.value; $('#mvolTxt').textContent = e.target.value + '%'; }
+  if (e.target.id === 'ovol') { S.merge.ovol = +e.target.value; $('#ovolTxt').textContent = e.target.value + '%'; volSum(); }
+  if (e.target.id === 'mvol') { S.merge.mvol = +e.target.value; $('#mvolTxt').textContent = e.target.value + '%'; volSum(); }
   if (e.target.id === 'linkIn') S.link = e.target.value;
   if (e.target.id === 'ncsQ') S.ncsQ = e.target.value;
 });
@@ -1197,7 +1202,7 @@ async function boot() {
   setTheme(S.settings.theme || 'system');
   S.page = ['footage', 'shorts', 'merged', 'music', 'settings'].includes(S.settings.last_page) ? S.settings.last_page : 'footage';
   Object.assign(S.merge, S.settings.merge || {});
-  S.musicVol = lsGet('musicVol', 0.5); S.detailW = lsGet('detailW', DDEF);
+  S.musicVol = lsGet('musicVol', 0.5); S.volOpen = lsGet('volOpen', false); S.detailW = lsGet('detailW', DDEF);
   S.queue = lsGet('queue', []); S.queueW = lsGet('queueW', QDEF); S.view = lsGet('view', 'grid'); S.sort = lsGet('sort', 'newest'); S.collapsed = new Set(lsGet('collapsed', []));
   const open = /open=([a-z]+)(?::([a-z]+))?/.exec(location.hash || '');
   if (open) { S.page = open[1]; if (open[2] === 'queue') S.queueOpen = true; else if (open[2] === 'jobs') S.jobsOpen = true; else if (open[2] && S.page === 'music') S.musicTab = open[2]; }
