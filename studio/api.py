@@ -107,8 +107,63 @@ class Api:
             os.startfile(str(p))
 
     def open_url(self, url):
-        if str(url).startswith(("https://ncs.io/", "https://studio.youtube.com/", "https://www.youtube.com/")):
+        if str(url).startswith(("https://ncs.io/", "https://studio.youtube.com/", "https://www.youtube.com/",
+                                "https://youtu.be/", "https://console.cloud.google.com/")):
             music.open_url(url)
+
+    # ------------------------------------------------------------ YouTube
+    def yt_status(self):
+        import youtube
+        return youtube.status()
+
+    def yt_choose_client(self):
+        import webview
+        import youtube
+        r = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=("Google OAuth client (*.json)",))
+        if not r:
+            return {"ok": False, "error": ""}
+        try:
+            youtube.set_client(r[0])
+            return {"ok": True}
+        except youtube.YTError as e:
+            return {"ok": False, "error": str(e)}
+
+    def yt_sign_in(self):
+        import youtube
+        try:
+            return {"ok": True, **youtube.sign_in()}
+        except youtube.YTError as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:
+            return {"ok": False, "error": f"Sign-in didn't finish ({type(e).__name__}: {e})"}
+
+    def yt_sign_out(self):
+        import youtube
+        youtube.sign_out()
+        return True
+
+    def yt_upload(self, form):
+        p = Path(form.get("path", ""))
+        if not is_inside(p, [merged_root()]) or not p.exists():
+            return {"ok": False, "error": "Only videos in the Merged folder can be uploaded."}
+        title = (form.get("title") or "").strip()
+        if not title:
+            return {"ok": False, "error": "Add a title."}
+        if any(ch in title for ch in "<>"):
+            return {"ok": False, "error": "YouTube titles can't contain < or >."}
+        tags = [t.strip().lstrip("#") for t in re.split(r"[,\n]", form.get("tags") or "") if t.strip().lstrip("#")]
+        if len(",".join(tags)) > 500:
+            return {"ok": False, "error": "Tags are over YouTube's 500-character limit."}
+        meta = {"title": title, "description": (form.get("description") or "").replace("<", "‹").replace(">", "›"),
+                "tags": tags, "privacy": form.get("privacy", "private"), "publish_at": form.get("publish_at") or "",
+                "made_for_kids": bool(form.get("made_for_kids")), "notify": bool(form.get("notify", True))}
+        if meta["privacy"] not in ("private", "unlisted", "public"):
+            meta["privacy"] = "private"
+        import youtube
+        st = youtube.status()
+        if not st["signed_in"]:
+            return {"ok": False, "error": st["error"] or "Not signed in to YouTube. Sign in in Settings → YouTube."}
+        return {"ok": True, "id": self._jobs.add_upload(p, meta)}
 
     # ------------------------------------------------------------ jobs
     def jobs(self):

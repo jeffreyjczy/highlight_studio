@@ -401,7 +401,9 @@ function pageMerged() {
      ${m.clips.length ? `<div class="clipspop"><button class="chip clipsbtn" aria-haspopup="true">${ic('scissors')}Made from ${plural(m.clips.length, 'short')}</button>
        <div class="pop" role="tooltip"><div class="pop-in"><ol>${m.clips.map(p => { const c = clipOfPath(p);
          return `<li title="${esc(p)}"><span>${esc(c ? c.title : base(p).replace(/\.mp4$/i, ''))}</span>${c ? `<small>${esc(c.game)}${c.score != null ? `, score ${c.score}` : ''}</small>` : '<small>Deleted short</small>'}</li>`; }).join('')}</ol></div></div></div>` : ''}
-     <div class="mactions"><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button>
+     ${(m.youtube || []).length ? (() => { const y = m.youtube[m.youtube.length - 1];
+       return `<div><button class="tpill st-done btnlike" data-action="open-url" data-url="${esc(y.studio)}" title="Open in YouTube Studio">${ic('check')}On YouTube, ${esc(y.privacy_requested === 'scheduled' ? 'scheduled' : y.privacy)}${m.youtube.length > 1 ? ` (${m.youtube.length} uploads)` : ''}</button></div>`; })() : ''}
+     <div class="mactions"><button class="btn sm primary" data-action="upload-yt" data-id="${m.id}">${ic('play')}Upload to YouTube</button><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button>
       <button class="btn sm ghost" data-action="reveal" data-p="${esc(m.path)}">${ic('folder')}Show in folder</button>
       ${m.clips.length ? `<button class="btn sm ghost" data-action="remerge" data-id="${m.id}">${ic('retry')}Merge again</button>` : ''}
       <button class="btn sm ghost danger" data-action="del-merged" data-id="${m.id}">${ic('trash')}Delete</button></div></div></article>`; }).join('')}</div></div>`;
@@ -488,6 +490,12 @@ function pageSettings() {
      `<select class="select" id="setJobs">${[1, 2].map(n => `<option ${+st.jobs_at_once === n ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
    ${row('Game playbooks', 'The rules the highlight maker follows for each game, in plain view. To change one, ask Claude in the terminal.',
      `<button class="btn sm" data-action="playbooks">${ic('book')}View playbooks</button>`)}
+   <div class="shead">YouTube</div>
+   ${(() => { const y = D.yt || {};
+     if (!y.client) return row('YouTube uploads', 'Not set up yet. A one-time setup of about 15 minutes lets the app upload merged videos to your channel when you press Upload.', `<button class="btn sm primary" data-action="yt-setup">Set up</button>`);
+     if (!y.signed_in) return row('YouTube uploads', y.error ? esc(y.error) : 'Client file added. Sign in with the Google account that owns your channel.', `<button class="btn sm" data-action="yt-setup">Setup steps</button><button class="btn sm primary" data-action="yt-signin">Sign in</button>`);
+     return row('YouTube uploads', `Signed in as <b>${esc(y.channel.title)}</b>. Uploads default to Private.`, `<span class="okline">${ic('check')}Connected</span><button class="btn sm" data-action="yt-setup">Setup steps</button><button class="btn sm ghost" data-action="yt-signout">Sign out</button>`);
+   })()}
    <div class="shead">Folders</div>
    ${row('Recordings', esc(D.roots.recordings) + '. Set by the pipeline.', `<button class="btn sm" data-action="open-folder" data-k="recordings">Open</button>`)}
    ${row('Shorts', esc(D.roots.highlights) + '. Set by the pipeline.', `<button class="btn sm" data-action="open-folder" data-k="highlights">Open</button>`)}
@@ -511,7 +519,7 @@ function renderFlyout() {
      ${done.length ? `<div class="sectionlabel"><span>Finished</span><button class="linkbtn" data-action="clear-jobs">Clear</button></div>${done.map(jobCard).join('')}` : ''}`;
     // Only rebuild what changed: the elapsed clocks tick in place, so spinners, scroll and
     // the slide-in animation aren't restarted every second.
-    const sig = body.replace(/data-el="[^"]*">[^<]*</g, '');
+    const sig = body.replace(/data-el="[^"]*">[^<]*</g, '').replace(/data-upbar="[^"]*" style="[^"]*"/g, '').replace(/data-upact="[^"]*">[^<]*</g, '');
     const fly = host.querySelector('.flyout.jobs');
     if (!fly) {
       host.innerHTML = `<div class="flyout jobs" role="dialog" aria-label="Jobs"><div class="flyhead"><h2>Jobs</h2><button class="iconbtn" data-action="toggle-jobs" aria-label="Close">${ic('x')}</button></div><div class="flybody">${body}</div></div>`;
@@ -521,7 +529,13 @@ function renderFlyout() {
       fb.innerHTML = body; fb.scrollTop = keep;
       fb.querySelectorAll('.report').forEach((r, i) => { r.scrollTop = reports[i] || 0; });
     } else {
-      for (const j of D.jobs) fly.querySelectorAll(`[data-el="${j.id}"]`).forEach(e => { e.textContent = dur(j.elapsed); });
+      for (const j of D.jobs) {
+        fly.querySelectorAll(`[data-el="${j.id}"]`).forEach(e => { e.textContent = dur(j.elapsed); });
+        if (j.kind === 'upload') {
+          fly.querySelectorAll(`[data-upbar="${j.id}"]`).forEach(e => { e.style.width = Math.round((j.progress || 0) * 100) + '%'; });
+          fly.querySelectorAll(`[data-upact="${j.id}"]`).forEach(e => { e.textContent = j.activity || 'Uploading'; });
+        }
+      }
     }
     host.querySelector('.flyout.jobs').dataset.sig = sig;
     return;
@@ -586,7 +600,19 @@ function recPanel(host, r) {
   host.querySelector('.flyout').dataset.sig = sig;
 }
 const recStep = j => `<span>Step ${(j.step || 0) + 1} of ${j.steps.length}: ${esc(j.steps[j.step] || '')}. ${esc(j.activity || '')}</span>`;
+function uploadCard(j) {
+  const pct = Math.round((j.progress || 0) * 100), el = dur(j.elapsed);
+  const name = `YouTube: ${esc(j.title)}`, vis = j.meta && j.meta.publish_at ? 'scheduled' : esc(j.privacy || 'private');
+  if (j.state === 'queued') return `<div class="job"><div class="top">${ic('activity')}<div class="grow"><b>${name}</b><span>${vis}. Waiting for the current upload.</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div></div>`;
+  if (j.state === 'running') return `<div class="job"><div class="top">${ic('loader', 'spin')}<div class="grow"><b>${name}</b><span>${vis}, <span class="num" data-el="${j.id}">${el}</span> so far</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div>
+    <div class="ubar"><i data-upbar="${j.id}" style="width:${pct}%"></i></div><div class="stepname"><span data-upact="${j.id}">${esc(j.activity || 'Uploading')}</span></div></div>`;
+  if (j.state === 'done') return `<div class="job"><div class="top"><span class="${j.forced_private ? 'bad' : 'ok'}">${ic(j.forced_private ? 'warn' : 'check')}</span><div class="grow"><b>${name}</b><span>Uploaded in ${el}</span></div></div>
+    <div class="report">${esc(j.report)}</div><div class="jobacts"><button class="btn sm ${j.forced_private ? 'primary' : ''}" data-action="open-url" data-url="${esc(j.studio)}">Open in YouTube Studio</button><button class="btn sm ghost" data-action="open-url" data-url="${esc(j.out)}">Watch</button></div></div>`;
+  return `<div class="job"><div class="top"><span class="bad">${ic('warn')}</span><div class="grow"><b>${name}</b><span>${j.state === 'cancelled' ? 'Cancelled' : 'Failed'} after ${el}</span></div></div>
+    ${j.error ? `<div class="report ${j.state === 'cancelled' ? '' : 'bad'}">${esc(j.error)}</div>` : ''}<div class="jobacts"><button class="btn sm" data-action="nav" data-page="merged">Back to Merged</button></div></div>`;
+}
 function jobCard(j) {
+  if (j.kind === 'upload') return uploadCard(j);
   const steps = j.steps || [], si = Math.min(steps.length - 1, j.step || 0);
   const name = j.kind === 'merge' ? `Merge: ${esc(j.title)}` : esc(j.title);
   const sub = j.kind === 'merge' ? `${plural((j.clips || []).length, 'short')}${j.music ? ', ' + esc(base(j.music)) : ''}` : `Model: ${esc(j.model_used || j.model)}`;
@@ -700,20 +726,86 @@ function creditDialog(t) {
     <label class="checkline"><input type="checkbox" id="cNone" ${t.no_credit ? 'checked' : ''}> This track doesn't need a credit (its source says so)</label></div></div>
    <div class="dlg-foot"><button class="btn primary" data-action="credit-save">Save</button><button class="btn" data-action="dlg-close">Cancel</button></div>`);
 }
-function descDialog(m) {
+function buildDesc(m) {
   const cs = m.clips.map(clipOfPath).filter(Boolean), t = trackOfPath(m.music);
-  const tags = [...new Set(cs.flatMap(c => String(c.tags || '').split(/\s+/)).filter(x => x.startsWith('#')))].slice(0, 8).join(' ');
+  const tagList = [...new Set(cs.flatMap(c => String(c.tags || '').split(/\s+/)).filter(x => x.startsWith('#')))].slice(0, 8);
   let credit = '', warn = '';
   if (t && t.credit_state === 'ready') credit = t.credit;
   else if (m.music && !t) warn = `The music (${base(m.music)}) isn't in your library any more, so its credit isn't known. Add it yourself before posting.`;
   else if (t && t.credit_state === 'missing') warn = `"${trackLabel(t)}" has no credit line. Add one on the Music page first.`;
   const lines = cs.length > 1 ? cs.map(c => '• ' + c.title).join('\n') : (cs[0] ? cs[0].desc || '' : '');
-  const txt = [m.name, lines, credit, tags].filter(Boolean).join('\n\n');
+  return {txt: [m.name, lines, credit, tagList.join(' ')].filter(Boolean).join('\n\n'), warn, tagList};
+}
+function descDialog(m) {
+  const {txt, warn} = buildDesc(m);
   openDialog(`<div class="dlg-body"><h2>YouTube description</h2><p>Built from the shorts' text and the music credit. Edit it before copying if you like.</p>
    ${warn ? `<div class="warnbox">${ic('warn')}<span>${esc(warn)}</span></div>` : ''}
    <div class="form"><textarea id="descTxt" style="min-height:240px">${esc(txt)}</textarea></div></div>
    <div class="dlg-foot"><button class="btn primary" data-action="copy-desc">${ic('copy')}Copy</button><button class="btn" data-action="dlg-close">Close</button></div>`);
 }
+/* ---------- YouTube upload ---------- */
+async function refreshYt() { D.yt = await API().yt_status(); return D.yt; }
+function ytGuide() {
+  const yt = D.yt || {};
+  const step = (n, title, body, btn) => `<li class="ystep"><span class="yn num">${n}</span><div><span class="yt-t">${title}</span><p>${body}</p>${btn || ''}</div></li>`;
+  const link = (url, label) => `<button class="btn sm" data-action="open-url" data-url="${url}">${label}</button>`;
+  openDialog(`<div class="dlg-body"><h2>Set up YouTube uploads</h2>
+    <p>A one-time setup of about 15 minutes. It's free: no billing account is needed. It gives the app permission to upload to your channel; the app still only uploads when you press Upload.</p>
+    <ol class="ysteps">
+     ${step(1, 'Create a Google Cloud project', 'Sign in with the Google account that owns your YouTube channel, then create a project named "Highlight Studio".', link('https://console.cloud.google.com/projectcreate', 'Open project page'))}
+     ${step(2, 'Turn on the YouTube Data API v3', 'With the new project selected, click Enable.', link('https://console.cloud.google.com/apis/library/youtube.googleapis.com', 'Open YouTube Data API'))}
+     ${step(3, 'Set up the consent screen', 'User type <b>External</b>. Fill in the app name and your email. Under Data access, add the scopes <code>youtube.upload</code> and <code>youtube.readonly</code>. Then under Audience, choose <b>Publish app</b> so you stay signed in (in Testing mode you\'d have to sign in again every 7 days).', link('https://console.cloud.google.com/auth/overview', 'Open consent screen'))}
+     ${step(4, 'Create the app key', 'Clients → Create client → Application type <b>Desktop app</b> → Create → <b>Download JSON</b>.', link('https://console.cloud.google.com/auth/clients', 'Open clients'))}
+     ${step(5, 'Connect it here', `Choose the JSON file you downloaded, then sign in. Google warns "Google hasn't verified this app" because it's your own private app: choose <b>Advanced → Go to Highlight Studio</b>.`,
+       `<div class="jobacts"><button class="btn sm ${yt.client ? '' : 'primary'}" data-action="yt-client">${yt.client ? ic('check') + 'Client file added' : 'Choose client file'}</button><button class="btn sm ${yt.client && !yt.signed_in ? 'primary' : ''}" data-action="yt-signin" ${yt.client ? '' : 'disabled'}>${yt.signed_in ? ic('check') + 'Signed in as ' + esc(yt.channel.title) : 'Sign in'}</button></div>`)}
+    </ol>
+    <p class="note">New API apps may only be allowed to upload as Private until Google reviews them. If that happens, the app tells you and links to YouTube Studio, where you publish with one click.</p></div>
+    <div class="dlg-foot"><button class="btn" data-action="dlg-close">Close</button></div>`);
+}
+function uploadDialog(m) {
+  const {txt, warn, tagList} = buildDesc(m);
+  const short = m.fmt === 'short' && m.len <= 180;
+  const prev = (m.youtube || []).slice(-1)[0];
+  const tags = tagList.map(t => t.replace(/^#/, '')).join(', ');
+  const now = new Date(Date.now() + 3600e3); now.setMinutes(0, 0, 0);
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  S.uploadPath = m.path;
+  openDialog(`<div class="dlg-body"><h2>Upload to YouTube</h2>
+    <p>Everything is filled in from the shorts and the music credit. Check it, then press Upload. ${D.yt && D.yt.channel ? `Channel: <b>${esc(D.yt.channel.title)}</b>.` : ''}</p>
+    ${prev ? `<div class="warnbox">${ic('warn')}<span>This video was already uploaded on ${esc(when(prev.uploaded_at))} (<a href="#" data-action="open-url" data-url="${esc(prev.studio)}">open in Studio</a>). Uploading again makes a second copy.</span></div>` : ''}
+    ${warn ? `<div class="warnbox">${ic('warn')}<span>${esc(warn)}</span></div>` : ''}
+    <div class="form">
+     <label>Title <span class="count-hint num" id="tCount"></span><input type="text" id="yTitle" maxlength="100" value="${esc(m.name)}"></label>
+     <label>Description <span class="count-hint num" id="dCount"></span><textarea id="yDesc" maxlength="5000" style="min-height:170px">${esc(txt)}</textarea></label>
+     <label>Tags (comma separated)<input type="text" id="yTags" value="${esc(tags)}"></label>
+     <div class="two"><label>Visibility<select id="yPriv"><option value="private" selected>Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option><option value="scheduled">Scheduled</option></select></label>
+      <label id="yWhenWrap" hidden>Publish at (your time)<input type="datetime-local" id="yWhen" value="${local}"></label></div>
+     <div class="two"><label>Made for kids<select id="yKids"><option value="0" selected>No, it's not made for kids</option><option value="1">Yes, it's made for kids</option></select></label>
+      <label>Category<select disabled><option>Gaming</option></select></label></div>
+     <label class="checkline"><input type="checkbox" id="yNotify" checked> Notify subscribers</label>
+     ${short ? `<p class="note" style="margin:0">This is vertical and ${dur(m.len)} long, so YouTube shows it as a Short automatically.</p>` : ''}
+    </div></div>
+    <div class="dlg-foot"><button class="btn primary" data-action="yt-upload">${ic('play')}Upload to YouTube</button><button class="btn" data-action="dlg-close">Cancel</button></div>`);
+  const upd = () => { $('#tCount').textContent = `${$('#yTitle').value.length}/100`; $('#dCount').textContent = `${$('#yDesc').value.length}/5000`; };
+  $('#yTitle').addEventListener('input', upd); $('#yDesc').addEventListener('input', upd); upd();
+  $('#yPriv').addEventListener('change', e => { $('#yWhenWrap').hidden = e.target.value !== 'scheduled'; });
+}
+async function startUpload() {
+  const priv = $('#yPriv').value;
+  let publishAt = '';
+  if (priv === 'scheduled') {
+    const d = new Date($('#yWhen').value);
+    if (isNaN(d) || d.getTime() < Date.now() + 15 * 60e3) { toast('Pick a time at least 15 minutes from now'); return; }
+    publishAt = d.toISOString();
+  }
+  const r = await API().yt_upload({path: S.uploadPath, title: $('#yTitle').value, description: $('#yDesc').value, tags: $('#yTags').value,
+    privacy: priv === 'scheduled' ? 'private' : priv, publish_at: publishAt, made_for_kids: $('#yKids').value === '1', notify: $('#yNotify').checked});
+  if (!r.ok) { toast("Can't upload yet", r.error); return; }
+  closeDialog(); S.jobsOpen = true; S.detail = null; S.detailRec = null;
+  toast('Upload started', 'Watch it under Jobs. You can keep using the app.');
+  await pollJobs(); render();
+}
+
 /* ---------- playbook viewer (read-only; playbooks are changed by asking Claude outside the app) ---------- */
 async function openPlaybooks() {
   openDialog(`<div class="dlg-body"><h2>Game playbooks</h2><div class="loading">${ic('loader', 'spin')}Loading…</div></div>`, 'pbview');
@@ -766,8 +858,9 @@ async function pollJobs() {
       if (j.state === 'running' && j.kind === 'highlight') reloadF = true;
       if (j.state === 'done') {
         if (j.kind === 'highlight') { reloadF = reloadS = true; toast(`${j.title}: ${j.clips != null ? plural(j.clips, 'short') : 'done'}`, 'Highlights are ready.', ['View shorts', 'nav', 'shorts']); }
+        else if (j.kind === 'upload') { reloadM = true; toast(j.forced_private ? `Uploaded "${j.title}" as Private` : `Uploaded "${j.title}" to YouTube`, j.forced_private ? 'YouTube kept it private. Publish it in YouTube Studio.' : j.out, ['Show jobs', 'show-jobs']); }
         else { reloadM = reloadS = true; toast(`Merged "${j.title}"`, `Saved to ${D.roots.merged}`, ['Open Merged', 'nav', 'merged']); }
-      } else if (j.state === 'failed') { reloadF = true; toast(`${j.kind === 'merge' ? 'Merge' : 'Highlight run'} failed: ${j.title}`, String(j.error || '').slice(0, 160), ['Show jobs', 'show-jobs']); }
+      } else if (j.state === 'failed') { reloadF = true; toast(`${{merge: 'Merge', upload: 'Upload'}[j.kind] || 'Highlight run'} failed: ${j.title}`, String(j.error || '').slice(0, 160), ['Show jobs', 'show-jobs']); }
       else if (j.state === 'cancelled') reloadF = true;
     }
     prevJobState.set(j.id, j.state);
@@ -841,6 +934,18 @@ document.addEventListener('click', async e => {
     case 'del-rec-one': deleteDialog('footage', [recById.get(id)].filter(Boolean)); break;
     case 'collapse-sets': { const sets = D.sets.filter(s => s.game === t.dataset.g);
       sets.forEach(s => t.dataset.mode === 'collapse' ? S.collapsed.add('r:' + s.id) : S.collapsed.delete('r:' + s.id)); lsSet('collapsed', [...S.collapsed]); render(); break; }
+    case 'open-url': e.preventDefault(); API().open_url(t.dataset.url); break;
+    case 'yt-setup': await refreshYt(); ytGuide(); break;
+    case 'yt-client': { const r = await API().yt_choose_client(); if (!r.ok && r.error) toast("That file didn't work", r.error);
+      await refreshYt(); if (dlg.open) ytGuide(); render(); break; }
+    case 'yt-signin': { t.disabled = true; toast('Finish signing in in your browser', 'Choose your channel\'s Google account, then Advanced → Go to Highlight Studio.');
+      const r = await API().yt_sign_in(); await refreshYt();
+      toast(r.ok && D.yt.signed_in ? `Signed in as ${D.yt.channel.title}` : "Sign-in didn't finish", r.ok ? (D.yt.error || '') : r.error);
+      if (dlg.open) ytGuide(); render(); break; }
+    case 'yt-signout': await API().yt_sign_out(); await refreshYt(); toast('Signed out of YouTube'); render(); break;
+    case 'upload-yt': { const m = D.merged.find(x => x.id === id); if (!m) break; t.disabled = true; await refreshYt(); t.disabled = false;
+      if (D.yt.signed_in) uploadDialog(m); else ytGuide(); break; }
+    case 'yt-upload': startUpload(); break;
     case 'fs-enter': enterTheater(t.closest('.vwrap')); break;
     case 'fs-exit': exitTheater(); break;
     case 'playbooks': openPlaybooks(); break;
@@ -988,6 +1093,7 @@ async function boot() {
   render();
   if (S.page === 'music' && S.musicTab === 'ncs') ncsSearch();
   if (open && open[2] === 'playbooks') openPlaybooks();
+  if (open && open[2] === 'ytguide') { await refreshYt(); ytGuide(); }
   if (DEMO) {
     const long = D.sets.flatMap(s => s.clips).sort((a, b) => b.title.length - a.title.length).slice(0, 4);
     S.queue = long.map(c => c.path); S.merge.name = 'A very long merged video name for the weekend Valorant and Arena Breakout montage';
@@ -996,6 +1102,7 @@ async function boot() {
   if (open && open[2] === 'detail' && S.page === 'footage') {
     const r = D.footage.find(x => x.status === 'done') || D.footage[0]; if (r) { S.detailRec = r.id; render(); }
   }
+  refreshYt().then(() => { if (S.page === 'settings') render(); });
   setInterval(pollJobs, 1000);
   setInterval(loadDisk, 30000);
   setInterval(async () => {  // pick up new or finished recordings without a manual refresh

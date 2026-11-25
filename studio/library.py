@@ -234,8 +234,16 @@ def scan_merged():
                 pass
         info = probe(f)
         st = f.stat()
+        yt = []
+        yj = f.with_suffix(".youtube.json")
+        if yj.exists():
+            try:
+                yt = json.loads(yj.read_text(encoding="utf-8"))
+                yt = yt if isinstance(yt, list) else [yt]
+            except (OSError, ValueError):
+                yt = []
         out.append({
-            "id": file_id(f), "path": str(f), "name": f.stem, "size": st.st_size,
+            "id": file_id(f), "path": str(f), "name": f.stem, "size": st.st_size, "youtube": yt,
             "ts": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="minutes"),
             "len": side.get("length") or info["dur"], "w": info["w"], "h": info["h"],
             "fmt": "short" if info["h"] > info["w"] else "long",

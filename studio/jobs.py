@@ -87,6 +87,13 @@ class Jobs:
             self.jobs.insert(0, j)
         return j["id"]
 
+    def add_upload(self, path, meta):
+        with self.lock:
+            j = self._new("upload", path=str(path), title=meta["title"], steps=["Upload", "Finish"], meta=meta,
+                          progress=0.0, privacy=meta.get("privacy"))
+            self.jobs.insert(0, j)
+        return j["id"]
+
     def cancel(self, jid):
         with self.lock:
             j = self._find(jid)
@@ -121,15 +128,15 @@ class Jobs:
             with self.lock:
                 limit = max(1, int(SETTINGS.get("jobs_at_once", 1)))
                 hl_running = sum(1 for x in self.jobs if x["kind"] == "highlight" and x["state"] == "running")
-                merge_running = any(x["kind"] == "merge" and x["state"] == "running" for x in self.jobs)
-                # highlight runs obey the limit; one merge (no Claude involved) can run beside them
+                busy = {x["kind"] for x in self.jobs if x["state"] == "running"}
+                # highlight runs obey the limit; one merge and one upload can run beside them
                 nxt = next((x for x in reversed(self.jobs) if x["state"] == "queued" and
                             ((x["kind"] == "highlight" and hl_running < limit) or
-                             (x["kind"] == "merge" and not merge_running))), None)
+                             (x["kind"] in ("merge", "upload") and x["kind"] not in busy))), None)
                 if not nxt:
                     continue
                 nxt.update(state="running", started=time.time(), activity="Starting")
-            target = self._run_highlight if nxt["kind"] == "highlight" else self._run_merge
+            target = {"highlight": self._run_highlight, "merge": self._run_merge, "upload": self._run_upload}[nxt["kind"]]
             threading.Thread(target=self._guard, args=(target, nxt), daemon=True).start()
 
     def _guard(self, fn, j):
@@ -231,6 +238,40 @@ class Jobs:
             not result else (e.get("reason") or (text[-400:] if text else "") or " ".join(raw_tail)[-400:]
                              or f"claude exited with code {p.returncode}")
         self._finish(j, "failed", report=text, usage=usage, error=err)
+
+    # ------------------------------------------------------------ YouTube upload
+    def _run_upload(self, j):
+        import youtube
+        src = Path(j["path"])
+        if not src.exists():
+            return self._finish(j, "failed", error="The merged video no longer exists.")
+        with self.lock:
+            j["activity"] = "Uploading to YouTube"
+
+        def progress(f):
+            with self.lock:
+                j["progress"] = round(f, 4)
+                j["activity"] = f"Uploading to YouTube, {f * 100:.0f}% of {src.stat().st_size / 1048576:.0f} MB"
+        try:
+            res = youtube.upload(src, j["meta"], progress, lambda: bool(j.get("_cancel")))
+        except youtube.YTError as e:
+            if j.get("_cancel"):
+                return self._finish(j, "cancelled", error="Cancelled. Nothing was published.")
+            return self._finish(j, "failed", error=str(e))
+        record = src.with_suffix(".youtube.json")
+        history = []
+        if record.exists():
+            try:
+                old = json.loads(record.read_text(encoding="utf-8"))
+                history = old if isinstance(old, list) else [old]
+            except (OSError, ValueError):
+                pass
+        record.write_text(json.dumps(history + [res], indent=1, ensure_ascii=False), encoding="utf-8")
+        forced = res["privacy_requested"] in ("public", "unlisted") and res["privacy"] == "private"
+        self._finish(j, "done", step=1, progress=1.0, out=res["url"], studio=res["studio"], yt=res, forced_private=forced,
+                     report=("YouTube kept this video Private (new API apps can only upload privately until Google "
+                             "reviews them). Open it in YouTube Studio to make it public.") if forced else
+                     f"Uploaded as {res['privacy_requested']}: {res['url']}")
 
     # ------------------------------------------------------------ merge
     def _run_merge(self, j):
