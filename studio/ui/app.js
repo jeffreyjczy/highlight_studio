@@ -59,7 +59,7 @@ const S = {page: 'footage', view: 'grid', q: '', status: 'all', sort: 'newest', 
   sel: {footage: new Set(), shorts: new Set(), music: new Set()}, queue: [], queueOpen: false, jobsOpen: false,
   detail: null, collapsed: new Set(), merge: {fmt: 'short', hq: true, style: 'punchy', music: 'any', mix: 'music', name: ''},
   musicTab: 'library', ncsQ: '', ncsItems: null, ncsLoading: false, ncsError: '', genre: 'all', playing: null,
-  lookup: null, lookupBusy: false, link: '', settings: {}};
+  lookup: null, lookupBusy: false, link: '', settings: {}, musicVol: 0.5, playingInfo: null};
 let clipById = new Map(), clipByPath = new Map(), recById = new Map(), setOfClip = new Map();
 const prevJobState = new Map();
 
@@ -184,7 +184,7 @@ function render() {
   const fn = {footage: pageFootage, shorts: pageShorts, merged: pageMerged, music: pageMusic, settings: pageSettings}[S.page];
   m.innerHTML = fn();
   m.scrollTop = keep;
-  renderQueue(); renderFlyout();
+  renderQueue(); renderFlyout(); renderNow();
   if (theaterEl && !theaterEl.isConnected) exitTheater();
 }
 const loadingPage = (title) => `<div class="page"><div class="pagehead"><h1>${title}</h1></div><div class="loading">${ic('loader', 'spin')}Reading your folders…</div></div>`;
@@ -327,8 +327,8 @@ function renderQueue() {
   const limit = S.merge.fmt === 'short' ? 180 : null, scale = limit ? Math.max(limit, total) : Math.max(total, 1);
   let acc = 0;
   const usable = D.tracks.filter(t => t.credit_state !== 'missing');
-  el.innerHTML = `<div class="qresize" title="Drag to resize. Double-click to reset." role="separator" aria-orientation="vertical" aria-label="Resize merge queue"></div><div class="qhead"><h2>Merge queue</h2><span class="grow"></span>${items.length ? '<button class="linkbtn" data-action="q-clear">Clear</button>' : ''}<button class="iconbtn" data-action="toggle-queue" aria-label="Hide merge queue">${ic('x')}</button></div>
-  ${items.length ? `<ol class="qlist" id="qlist">${items.map(c => `<li class="qitem" draggable="true" data-qp="${esc(c.path)}">
+  el.innerHTML = `${RESIZER}<div class="qhead"><h2>Merge queue</h2><span class="grow"></span>${items.length ? '<button class="linkbtn" data-action="q-clear">Clear</button>' : ''}<button class="iconbtn" data-action="toggle-queue" aria-label="Hide merge queue">${ic('x')}</button></div>
+  ${items.length ? `<ol class="qlist" id="qlist">${items.map((c, i) => `<li class="qitem" draggable="true" data-qp="${esc(c.path)}" style="--qc:${QCOL[i % QCOL.length]}">
     <span class="grip" title="Drag to reorder">${ic('grip')}</span><span class="mini"><img src="${thumbUrl(c.path, 0.4)}" alt="" draggable="false"></span>
     <span class="t"><b title="${esc(c.title)}">${esc(c.title)}</b><span class="num">${dur(c.len)}${c.score != null ? `, score ${c.score}` : ''}, ${esc(c.game)}</span></span>
     <button class="iconbtn" data-action="q-remove" data-p="${esc(c.path)}" aria-label="Remove">${ic('x')}</button></li>`).join('')}</ol>`
@@ -348,23 +348,30 @@ function renderQueue() {
   bindDrag();
 }
 function saveQueue() { if (!DEMO) lsSet('queue', S.queue); }
-/* resize the merge queue by dragging its left edge; double-click the edge to reset */
-const QMIN = 280, QDEF = 340, qMax = () => Math.max(QMIN, Math.min(900, window.innerWidth - 460));
+/* resize a side panel (merge queue or details) by dragging its left edge; double-click to reset */
+const QMIN = 280, QDEF = 340, DDEF = 420, qMax = () => Math.max(QMIN, Math.min(900, window.innerWidth - 460));
+const RESIZER = '<div class="qresize" title="Drag to resize. Double-click to reset." role="separator" aria-orientation="vertical" aria-label="Resize panel"></div>';
+const panelKey = el => el.id === 'detail' ? ['detailW', DDEF] : ['queueW', QDEF];
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest('.qresize'); if (!h || e.button !== 0) return;
   e.preventDefault();
-  const q = $('#queue'), startX = e.clientX, startW = q.getBoundingClientRect().width;
+  const q = h.parentElement, [key] = panelKey(q), startX = e.clientX, startW = q.getBoundingClientRect().width;
   h.classList.add('dragging'); document.body.classList.add('resizing');
-  const move = ev => { S.queueW = Math.round(Math.max(QMIN, Math.min(qMax(), startW + (startX - ev.clientX)))); q.style.width = S.queueW + 'px'; };
-  const up = () => { window.removeEventListener('pointermove', move); h.classList.remove('dragging'); document.body.classList.remove('resizing'); lsSet('queueW', S.queueW); };
+  const move = ev => { S[key] = Math.round(Math.max(QMIN, Math.min(qMax(), startW + (startX - ev.clientX)))); q.style.width = S[key] + 'px'; };
+  const up = () => { window.removeEventListener('pointermove', move); h.classList.remove('dragging'); document.body.classList.remove('resizing'); lsSet(key, S[key]); };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up, {once: true});
 });
 document.addEventListener('dblclick', e => {
-  if (!e.target.closest('.qresize')) return;
-  S.queueW = QDEF; lsSet('queueW', QDEF); const q = $('#queue'); if (q) q.style.width = QDEF + 'px';
+  const h = e.target.closest('.qresize'); if (!h) return;
+  const q = h.parentElement, [key, def] = panelKey(q);
+  S[key] = def; lsSet(key, def); q.style.width = def + 'px';
 });
-window.addEventListener('resize', () => { if (S.queueW && S.queueW > qMax()) { S.queueW = qMax(); const q = $('#queue'); if (q) q.style.width = S.queueW + 'px'; } });
+window.addEventListener('resize', () => {
+  for (const [id, key] of [['queue', 'queueW'], ['detail', 'detailW']]) {
+    if (S[key] && S[key] > qMax()) { S[key] = qMax(); const q = document.getElementById(id); if (q) q.style.width = S[key] + 'px'; }
+  }
+});
 function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
@@ -453,9 +460,14 @@ function pageMusic() {
     else if (S.ncsError) h += `<div class="empty"><b>Search didn't work</b>${esc(S.ncsError)}</div>`;
     else if (!list.length) h += `<div class="empty"><b>No tracks match</b>Try another name or genre.</div>`;
     else h += `<div class="ncs-grid">${list.map(n => { const have = inLibrary(n), wait = D.watch.waiting.includes(n.slug), playing = S.playing === 'ncs:' + n.slug;
-      return `<div class="tcard"><div class="cover">${n.cover ? `<img loading="lazy" src="${esc(n.cover)}" alt="">` : ''}<button class="playbtn ${playing ? 'on' : ''}" data-action="play-ncs" data-slug="${esc(n.slug)}" aria-label="Preview ${esc(n.title)}">${playing ? ic('pause') : ic('play')}</button></div>
-       <div class="tt"><b title="${esc(n.title)}">${esc(n.title)}</b><span title="${esc(n.artist)}">${esc(n.artist)}</span></div><div class="chips">${n.genre ? `<span class="chip">${esc(n.genre)}</span>` : ''}${n.mood ? `<span class="chip">${esc(n.mood)}</span>` : ''}${n.len ? `<span class="chip num">${esc(n.len)}</span>` : ''}</div>
-       ${have ? `<div class="inlib">${ic('check')}In your library</div>` : wait ? `<button class="btn" disabled>${ic('loader', 'spin')}Waiting for the download</button>` : `<button class="btn" data-action="get-ncs" data-slug="${esc(n.slug)}">Get track</button>`}</div>`; }).join('')}</div>`;
+      const facts = [n.genre, n.mood].filter(Boolean).map(esc).join(' · ');
+      return `<div class="tcard"><div class="cover">${n.cover ? `<img loading="lazy" src="${esc(n.cover)}" alt="">` : ''}
+         ${facts || n.len ? `<div class="cover-info">${facts ? `<span>${facts}</span>` : ''}${n.len ? `<span class="num">${esc(n.len)}</span>` : ''}</div>` : ''}
+         <button class="playbtn ${playing ? 'on' : ''}" data-action="play-ncs" data-slug="${esc(n.slug)}" aria-label="Preview ${esc(n.title)}">${playing ? ic('pause') : ic('play')}</button></div>
+       <div class="tt" title="${esc([n.title, n.artist, facts.replace(/&middot;|·/g, '·'), n.len].filter(Boolean).join('\n'))}"><b>${esc(n.title)}</b><span>${esc(n.artist)}</span></div>
+       ${have ? `<div class="inlib">${ic('check')}In your library</div>`
+         : wait ? `<div class="waitrow"><span>${ic('loader', 'spin')}Waiting for the download</span><button class="linkbtn" data-action="ncs-cancel" data-slug="${esc(n.slug)}">Stop waiting</button></div>`
+         : `<button class="btn" data-action="get-ncs" data-slug="${esc(n.slug)}">Get track</button>`}</div>`; }).join('')}</div>`;
     return h + `</div>`;
   }
   const L = S.lookup;
@@ -511,9 +523,12 @@ function pageSettings() {
 }
 
 /* ---------- flyouts ---------- */
-function renderFlyout() {
+function renderFlyout() { renderJobs(); renderDetail(); }
+/* Jobs: a popup over the page */
+function renderJobs() {
   const host = $('#flyout');
-  if (S.jobsOpen) {
+  if (!S.jobsOpen) { host.innerHTML = ''; return; }
+  {
     const act = D.jobs.filter(j => j.state === 'queued' || j.state === 'running'), done = D.jobs.filter(j => !(j.state === 'queued' || j.state === 'running'));
     const body = `${act.length ? `<div class="sectionlabel">Running</div>${act.map(jobCard).join('')}` : `<div class="qempty">Nothing running. Select recordings on Footage and choose Make highlights.</div>`}
      ${done.length ? `<div class="sectionlabel"><span>Finished</span><button class="linkbtn" data-action="clear-jobs">Clear</button></div>${done.map(jobCard).join('')}` : ''}`;
@@ -538,15 +553,20 @@ function renderFlyout() {
       }
     }
     host.querySelector('.flyout.jobs').dataset.sig = sig;
-    return;
   }
+}
+/* Details (a recording or a short): a docked side panel next to the page, like the merge queue */
+function renderDetail() {
+  const host = $('#detail');
+  host.style.width = (S.detailW || DDEF) + 'px';
   if (S.detailRec) {
     const r = recById.get(S.detailRec);
-    if (r) return recPanel(host, r);
+    if (r) { host.hidden = false; return recPanel(host, r); }
     S.detailRec = null;
   }
   const c = S.detail && clipById.get(S.detail);
-  if (!c) { S.detail = null; host.innerHTML = ''; return; }
+  if (!c) { S.detail = null; host.hidden = true; host.innerHTML = ''; return; }
+  host.hidden = false;
   const s = setOfClip.get(c.id), q = S.queue.some(p => p.toLowerCase() === c.path.toLowerCase());
   const yt = (label, val, k) => val ? `<div class="yt-row"><div><small>${label}</small><p>${esc(val)}</p></div><button class="iconbtn" data-action="copy" data-k="${k}" aria-label="Copy ${label}">${ic('copy')}</button></div>` : '';
   const parts = c.parts && typeof c.parts === 'object' ? c.parts : null;
@@ -562,7 +582,7 @@ function renderFlyout() {
   // unchanged panel: leave it alone so a playing video keeps playing
   const cur = host.querySelector('.flyout');
   if (cur && cur.dataset.sig === html) return;
-  host.innerHTML = html;
+  host.innerHTML = RESIZER + html;
   host.querySelector('.flyout').dataset.sig = html;
 }
 function recPanel(host, r) {
@@ -596,7 +616,7 @@ function recPanel(host, r) {
     const s = cur.querySelector('[data-recstep]'); if (s && j) s.innerHTML = recStep(j);
     return;
   }
-  host.innerHTML = html;
+  host.innerHTML = RESIZER + html;
   host.querySelector('.flyout').dataset.sig = sig;
 }
 const recStep = j => `<span>Step ${(j.step || 0) + 1} of ${j.steps.length}: ${esc(j.steps[j.step] || '')}. ${esc(j.activity || '')}</span>`;
@@ -892,14 +912,37 @@ function softUpdate() {
 
 /* ---------- events ---------- */
 function setTheme(t) { if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t); }
-async function playAudio(key, url) {
+async function playAudio(key, url, info) {
   const a = $('#audio');
   if (S.playing === key) { a.pause(); S.playing = null; render(); return; }
-  a.src = url; S.playing = key;
+  a.src = url; a.volume = S.musicVol; S.playing = key; S.playingInfo = info || {};
   try { await a.play(); } catch (_) { S.playing = null; toast("Couldn't play that track"); }
   render();
 }
+/* now-playing bar: play/pause, seek and volume for music previews */
+function renderNow() {
+  const el = $('#nowplaying'), a = $('#audio'), on = !!S.playing || (!!S.playingInfo && !a.paused);
+  el.hidden = !S.playing;
+  if (!S.playing) return;
+  const i = S.playingInfo || {};
+  el.innerHTML = `<button class="playbtn on" data-action="np-toggle" aria-label="${a.paused ? 'Play' : 'Pause'}">${a.paused ? ic('play') : ic('pause')}</button>
+    <div class="np-t"><b title="${esc(i.title || '')}">${esc(i.title || 'Preview')}</b><span>${esc(i.artist || '')}</span></div>
+    <span class="num np-time" id="npTime">0:00</span><input type="range" id="npSeek" min="0" max="1000" value="0" aria-label="Position">
+    <label class="np-vol" title="Volume">${ic('music')}<input type="range" id="npVol" min="0" max="100" value="${Math.round(S.musicVol * 100)}" aria-label="Volume"><span class="num" id="npVolTxt">${Math.round(S.musicVol * 100)}%</span></label>
+    <button class="iconbtn" data-action="np-stop" aria-label="Stop">${ic('x')}</button>`;
+  updateNow();
+}
+function updateNow() {
+  const a = $('#audio'), s = $('#npSeek'), tm = $('#npTime'); if (!s) return;
+  if (a.duration && !s.matches(':active')) s.value = Math.round(a.currentTime / a.duration * 1000);
+  tm.textContent = `${dur(a.currentTime)} / ${a.duration ? dur(a.duration) : '-:--'}`;
+}
+$('#audio').addEventListener('timeupdate', updateNow);
 $('#audio').addEventListener('ended', () => { S.playing = null; render(); });
+document.addEventListener('input', e => {
+  if (e.target.id === 'npVol') { S.musicVol = +e.target.value / 100; $('#audio').volume = S.musicVol; $('#npVolTxt').textContent = e.target.value + '%'; lsSet('musicVol', S.musicVol); }
+  if (e.target.id === 'npSeek') { const a = $('#audio'); if (a.duration) a.currentTime = +e.target.value / 1000 * a.duration; }
+});
 
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-action]'); if (!t) return;
@@ -910,7 +953,7 @@ document.addEventListener('click', async e => {
       if (S.page === 'music' && S.musicTab === 'ncs' && !S.ncsItems) ncsSearch();
       API().settings_set({last_page: S.page}); render(); $('#main').scrollTop = 0; break;
     case 'toggle-queue': S.queueOpen = !S.queueOpen; render(); break;
-    case 'toggle-jobs': S.jobsOpen = !S.jobsOpen; S.detail = null; S.detailRec = null; render(); break;
+    case 'toggle-jobs': S.jobsOpen = !S.jobsOpen; render(); break;
     case 'show-jobs': S.jobsOpen = true; S.detail = null; $('#toastHost').innerHTML = ''; render(); break;
     case 'clear-jobs': await API().clear_jobs(); await pollJobs(); render(); break;
     case 'view': S.view = t.dataset.view; lsSet('view', S.view); render(); break;
@@ -1000,15 +1043,19 @@ document.addEventListener('click', async e => {
     case 'music-tab': S.musicTab = t.dataset.v; if (S.musicTab === 'ncs' && !S.ncsItems) ncsSearch(); render(); break;
     case 'music-lib': S.page = 'music'; S.musicTab = 'library'; $('#toastHost').innerHTML = ''; render(); break;
     case 'track-check': { const s = S.sel.music; s.has(id) ? s.delete(id) : s.add(id); render(); break; }
-    case 'play-local': { const tr = D.tracks.find(x => x.id === id); if (tr) playAudio(tr.path, mediaUrl(tr.path)); break; }
+    case 'play-local': { const tr = D.tracks.find(x => x.id === id); if (tr) playAudio(tr.path, mediaUrl(tr.path), {title: tr.title || tr.file, artist: tr.artist}); break; }
+    case 'np-toggle': { const a = $('#audio'); if (a.paused) a.play().catch(() => {}); else a.pause(); setTimeout(renderNow, 50); break; }
+    case 'np-stop': $('#audio').pause(); S.playing = null; render(); break;
     case 'play-ncs': { const slug = t.dataset.slug, key = 'ncs:' + slug;
       if (S.playing === key) { playAudio(key); break; }
       t.disabled = true; const info = await API().ncs_track(slug); t.disabled = false;
-      if (info.ok && info.preview) playAudio(key, info.preview); else toast('No preview for this track', info.error || ''); break; }
+      const n = (S.ncsItems || []).find(x => x.slug === slug) || {};
+      if (info.ok && info.preview) playAudio(key, info.preview, {title: n.title, artist: n.artist}); else toast('No preview for this track', info.error || ''); break; }
     case 'ncs-search': S.ncsQ = ($('#ncsQ') || {}).value || ''; ncsSearch(); break;
     case 'get-ncs': { const n = (S.ncsItems || []).find(x => x.slug === t.dataset.slug); if (!n) break;
       if (!S.settings.watch_downloads) toast('Adding from Downloads is off', 'Turn it on in Settings, or import the file yourself after downloading.');
       await API().ncs_get(n); toast(`Opened "${n.title}" on ncs.io`, 'Click Download on that page. Studio adds the file when it lands in Downloads.'); await pollJobs(); render(); break; }
+    case 'ncs-cancel': await API().ncs_cancel(t.dataset.slug); toast('Stopped waiting for that download', 'If you download it later, import it from Other sources.'); await pollJobs(); render(); break;
     case 'goto-ncs': S.musicTab = 'ncs'; S.ncsQ = t.dataset.q || ''; ncsSearch(); break;
     case 'lookup': { S.link = ($('#linkIn') || {}).value || ''; if (!S.link.trim()) { toast('Paste a video link first'); break; }
       S.lookupBusy = true; render(); S.lookup = await API().check_link(S.link); S.lookupBusy = false; render(); break; }
@@ -1044,7 +1091,9 @@ document.addEventListener('keydown', e => {
   if (e.target.id === 'ncsQ' && e.key === 'Enter') { ncsSearch(); return; }
   if (e.target.id === 'linkIn' && e.key === 'Enter') { document.querySelector('[data-action="lookup"]')?.click(); return; }
   if (e.target.matches('input,select,textarea') || dlg.open) return;
-  if (e.key === 'Escape') { if (S.detail || S.detailRec || S.jobsOpen) { S.detail = null; S.detailRec = null; S.jobsOpen = false; render(); } }
+  if (e.key === 'Escape') {  // closes the Jobs popup first, then the details panel
+    if (S.jobsOpen) { S.jobsOpen = false; render(); } else if (S.detail || S.detailRec) { S.detail = null; S.detailRec = null; render(); }
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && (S.page === 'footage' || S.page === 'shorts')) {
     e.preventDefault();
     if (S.page === 'footage') filteredRecs().filter(selectable).forEach(r => S.sel.footage.add(r.id)); else D.sets.forEach(s => s.clips.forEach(c => S.sel.shorts.add(c.id)));
@@ -1089,6 +1138,7 @@ async function boot() {
   setTheme(S.settings.theme || 'system');
   S.page = ['footage', 'shorts', 'merged', 'music', 'settings'].includes(S.settings.last_page) ? S.settings.last_page : 'footage';
   Object.assign(S.merge, S.settings.merge || {});
+  S.musicVol = lsGet('musicVol', 0.5); S.detailW = lsGet('detailW', DDEF);
   S.queue = lsGet('queue', []); S.queueW = lsGet('queueW', QDEF); S.view = lsGet('view', 'grid'); S.sort = lsGet('sort', 'newest'); S.collapsed = new Set(lsGet('collapsed', []));
   const open = /open=([a-z]+)(?::([a-z]+))?/.exec(location.hash || '');
   if (open) { S.page = open[1]; if (open[2] === 'queue') S.queueOpen = true; else if (open[2] === 'jobs') S.jobsOpen = true; else if (open[2] && S.page === 'music') S.musicTab = open[2]; }

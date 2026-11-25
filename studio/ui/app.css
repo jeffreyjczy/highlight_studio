@@ -56,7 +56,24 @@ button{cursor:pointer}
 .count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:11px;line-height:18px;text-align:center;font-weight:600}
 .count.zero{background:var(--muted-soft);color:var(--fg2)}
 
-.body{display:grid;grid-template-columns:200px minmax(0,1fr) auto;min-height:0;border-top:1px solid var(--stroke)}
+.body{display:grid;grid-template-columns:200px minmax(0,1fr) auto auto;min-height:0;border-top:1px solid var(--stroke)}
+/* details: docked side panel (like the merge queue); the panel markup inside is the old flyout */
+.dpanel{width:420px;min-width:0;max-width:calc(100vw - 260px);border-left:1px solid var(--stroke);background:var(--bg);position:relative;display:flex;flex-direction:column;min-height:0}
+.dpanel>.flyout{position:static;inset:auto;width:auto;max-width:none;flex:1;min-height:0;border:0;border-radius:0;box-shadow:none;background:var(--bg);animation:none}
+.dpanel .flyhead{padding:16px 12px 10px 18px}
+/* now-playing bar for music previews */
+.nowplaying{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:35;display:flex;align-items:center;gap:12px;
+  width:min(760px,calc(100% - 32px));padding:8px 10px 8px 12px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-lg);box-shadow:0 10px 32px var(--shadow)}
+.nowplaying .playbtn{width:34px;height:34px;flex:none}
+.np-t{min-width:0;width:180px;flex:none}
+.np-t b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np-t span{display:block;font-size:12px;color:var(--fg3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np-time{font-size:12px;color:var(--fg2);flex:none;min-width:78px;text-align:right}
+#npSeek{flex:1;min-width:60px;accent-color:var(--accent)}
+.np-vol{display:flex;align-items:center;gap:6px;flex:none;color:var(--fg2);font-size:12px}
+.np-vol input{width:90px;accent-color:var(--accent)}
+.np-vol .num{min-width:34px}
+.app:has(#nowplaying:not([hidden])) .toast{bottom:84px}
 .nav{display:flex;flex-direction:column;gap:2px;padding:8px 6px;background:var(--bg);border-right:1px solid var(--stroke)}
 .nav button{display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border:0;border-radius:var(--r-sm);background:transparent;text-align:left;position:relative;font-size:14px}
 .nav button:hover{background:var(--hover)}
@@ -182,7 +199,8 @@ body.resizing iframe,body.resizing video{pointer-events:none}
 .qhead h2{font:600 16px/22px var(--font-display);margin:0}
 .qhead .grow{flex:1}
 .qlist{list-style:none;margin:0;padding:4px 10px;overflow:auto;flex:1;min-height:80px;display:flex;flex-direction:column;gap:4px}
-.qitem{display:grid;grid-template-columns:16px 64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px;border-radius:var(--r-sm);background:var(--card);border:1px solid var(--stroke);min-width:0}
+.qitem{display:grid;grid-template-columns:16px 64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px;border-radius:var(--r-sm);background:var(--card);border:1px solid var(--stroke);min-width:0;
+  border-left:4px solid var(--qc,var(--stroke))}  /* same colour as this short's block in the timeline */
 .qitem.dragging{opacity:.4}
 .qitem.over{box-shadow:0 -2px 0 var(--accent)}
 .qitem .grip{cursor:grab;color:var(--fg3)}
@@ -311,6 +329,14 @@ body.resizing iframe,body.resizing video{pointer-events:none}
 .tcard .tt b,.tcard .tt span{white-space:nowrap}
 .tcard .chips{padding:0 2px}
 .tcard .btn{width:100%}
+/* genre, mood and length show on hover, over the bottom of the cover */
+.cover-info{position:absolute;left:0;right:0;bottom:0;padding:26px 52px 9px 10px;display:flex;flex-direction:column;gap:1px;
+  font-size:12px;line-height:16px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.78));opacity:0;transition:opacity .15s;pointer-events:none}
+.cover-info span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcard:hover .cover-info,.tcard:focus-within .cover-info{opacity:1}
+.waitrow{display:flex;align-items:center;justify-content:space-between;gap:6px;height:32px;font-size:12px;color:var(--fg2)}
+.waitrow>span{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.waitrow .linkbtn{flex:none;font-size:12px}
 .inlib{display:flex;align-items:center;justify-content:center;gap:6px;height:32px;color:var(--ok);font-weight:600;font-size:13px}
 .srcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:1100px}
 .srccard{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:var(--r-md);background:var(--card);border:1px solid var(--stroke)}

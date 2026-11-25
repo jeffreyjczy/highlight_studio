@@ -313,6 +313,10 @@ class Api:
         music.open_url(f"https://ncs.io/{item['slug']}")
         return True
 
+    def ncs_cancel(self, slug):
+        self._watcher.cancel(slug)
+        return True
+
     def open_ytal(self):
         self._watcher.expect_ytal()
         music.open_url("https://studio.youtube.com/channel/UC/music")

@@ -271,9 +271,12 @@ class Watcher:
             self._snap()
         self.ytal_until = time.time() + minutes * 60
 
+    def cancel(self, slug):
+        self.pending = [p for p in self.pending if p["slug"] != slug]
+
     def active(self):
         now = time.time()
-        self.pending = [p for p in self.pending if now - p["since"] < 30 * 60]
+        self.pending = [p for p in self.pending if now - p["since"] < 10 * 60]  # give up after 10 min
         return bool(self.pending) or now < self.ytal_until
 
     def status(self):
