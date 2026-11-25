@@ -1,0 +1,3 @@
+# Highlight Studio (install into the pipeline .venv)
+pywebview>=6.2
+markdown-it-py>=4.0
