@@ -189,6 +189,57 @@ class Api:
     def rec_info(self):
         return self._rec.info()
 
+    # ------------------------------------------------------------ rerun a processed recording
+    def _old_shorts(self, rec):
+        r"""Folders under E:\Highlights that hold this recording's shorts: the ledger's clips
+        folder and E:\Highlights\<game>\<recording name> (earlier reruns sit inside it as v2...)."""
+        led = ledger.load()
+        e = led["recordings"].get(ledger.key_of(rec)) or {}
+        found = []
+        cands = [Path(e["clips_dir"])] if e.get("clips_dir") else []
+        cands += [d for d in HIGHLIGHTS_ROOT.glob(f"*/{rec.stem}") if d.is_dir()]
+        for d in cands:
+            if not d.exists() or not is_inside(d, [HIGHLIGHTS_ROOT]) or d.resolve() == HIGHLIGHTS_ROOT.resolve():
+                continue
+            if any(d.resolve() == f.resolve() or f.resolve() in d.resolve().parents for f in found):
+                continue  # already covered by a parent folder
+            found = [f for f in found if d.resolve() not in f.resolve().parents] + [d]
+        return found
+
+    def rerun_info(self, path):
+        rec = Path(path)
+        if not (is_inside(rec, [RECORDINGS_ROOT]) and rec.exists()):
+            return {"ok": False, "error": "The recording isn't in the recordings folder any more."}
+        folders = self._old_shorts(rec)
+        shorts = [f for d in folders for f in d.rglob("*.mp4")]
+        lower = {str(f).lower() for f in shorts}
+        merged = [m["name"] for m in library.scan_merged() if any(str(c).lower() in lower for c in m["clips"])]
+        return {"ok": True, "folders": [str(d) for d in folders], "shorts": len(shorts),
+                "size": sum(f.stat().st_size for f in shorts), "merged": merged}
+
+    def rerun_highlights(self, path):
+        rec = Path(path)
+        info = self.rerun_info(path)
+        if not info["ok"]:
+            return info
+        led = ledger.load()
+        key = ledger.key_of(rec)
+        status = ledger.classify(rec, led["recordings"].get(key))
+        if status in ("processing", "recording"):
+            return {"ok": False, "error": f"Can't rerun while the recording is {status}."}
+        if any(j["kind"] == "highlight" and j["path"].lower() == str(rec).lower() and j["state"] in ("queued", "running")
+               for j in self._jobs.snapshot()):
+            return {"ok": False, "error": "A highlight run for this recording is already queued."}
+        for d in info["folders"]:
+            if not ledger.recycle(d):
+                return {"ok": False, "error": f"Couldn't move {d} to the Recycle Bin. Is a file in it open?"}
+        led = ledger.load()
+        led["recordings"].pop(key, None)  # same as `ledger.py reset`: treated as new
+        ledger.save(led)
+        if not self._jobs.add_highlight(str(rec), rec.parent.name):
+            return {"ok": False, "error": "The old shorts were removed, but the run couldn't be queued. Use Make highlights."}
+        return {"ok": True, "removed": info["shorts"]}
+
     def make_highlights(self, paths):
         n = 0
         for p in paths:

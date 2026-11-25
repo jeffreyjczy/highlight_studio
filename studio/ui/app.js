@@ -646,6 +646,7 @@ function recPanel(host, r) {
   const row = (k, v) => v ? `<dt>${k}</dt><dd title="${esc(String(v).replace(/<[^>]+>/g, ''))}">${v}</dd>` : '';
   const act = [];
   if (st === 'done' && set) act.push(`<button class="btn primary" data-action="view-set" data-id="${set.id}">${ic('scissors')}View ${plural(set.clips.length, 'short')}</button>`);
+  if (st === 'done' || st === 'changed') act.push(`<button class="btn" data-action="rerun" data-p="${esc(r.path)}">${ic('retry')}Rerun highlights</button>`);
   if (runnable(r)) act.push(`<button class="btn primary" data-action="make-one" data-p="${esc(r.path)}">${ic(st === 'new' ? 'sparkle' : 'retry')}${st === 'new' ? 'Make highlights' : 'Run again'}</button>`);
   act.push(`<button class="btn ghost" data-action="reveal" data-p="${esc(r.path)}">${ic('folder')}Show in folder</button>`);
   if (selectable(r)) act.push(`<button class="btn ghost danger" data-action="del-rec-one" data-id="${r.id}">${ic('trash')}Delete</button>`);
@@ -1072,6 +1073,23 @@ document.addEventListener('click', async e => {
       const n = await API().make_highlights(rs.map(r => r.path)); S.sel.footage.clear();
       toast(n ? `Started ${plural(n, 'highlight job')}` : 'Nothing new to start', n ? 'Each recording gets its own agent, one at a time.' : '');
       S.jobsOpen = !!n; await pollJobs(); render(); break; }
+    case 'rerun': {
+      const info = await API().rerun_info(t.dataset.p);
+      if (!info.ok) { toast("Can't rerun", info.error); break; }
+      S.pendingRerun = t.dataset.p;
+      const list = info.folders.map(f => `<div><span title="${esc(f)}">${esc(f.replace(D.roots.highlights + '\\', ''))}</span></div>`).join('');
+      openDialog(`<div class="dlg-body"><h2>Rerun highlights?</h2>
+        <p>The ${plural(info.shorts, 'short')} made from this recording (${size(info.size)}) go to the Recycle Bin, then a new highlight run starts and makes fresh ones.</p>
+        ${list ? `<div class="dlg-list">${list}</div>` : ''}
+        <div class="warnbox">${ic('warn')}<span>${info.merged.length ? `${plural(info.merged.length, 'merged video')} used these shorts (${esc(info.merged.slice(0, 3).join(', '))}${info.merged.length > 3 ? '…' : ''}). The merged videos stay, but Merge again won't find the old shorts. ` : ''}Edits you made to the old shorts' titles or text are lost. You can restore them from the Recycle Bin.</span></div></div>
+       <div class="dlg-foot"><button class="btn danger-solid" data-action="confirm-rerun">Delete old shorts and rerun</button><button class="btn" data-action="dlg-close" autofocus>Cancel</button></div>`);
+      break; }
+    case 'confirm-rerun': {
+      const p = S.pendingRerun; closeDialog(); if (!p) break;
+      const r = await API().rerun_highlights(p);
+      if (!r.ok) { toast("Can't rerun", r.error); break; }
+      toast('Rerunning highlights', `${plural(r.removed, 'old short')} moved to the Recycle Bin. Follow the new run under Jobs.`, ['Show jobs', 'show-jobs']);
+      await Promise.all([loadShorts(), loadFootage()]); await pollJobs(); render(); break; }
     case 'retry': { const n = await API().make_highlights([t.dataset.p]); toast(n ? 'Retrying' : "Couldn't retry", n ? 'The recording is reset and runs again.' : 'It may already be queued.'); await pollJobs(); render(); break; }
     case 'cancel': await API().cancel_job(id); toast('Stopping the job', 'A stopped highlight run is marked failed. Use Retry to run it again.'); await pollJobs(); render(); break;
     case 'del-footage': deleteDialog('footage', [...S.sel.footage].map(i => recById.get(i)).filter(Boolean)); break;
