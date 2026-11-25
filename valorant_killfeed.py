@@ -85,6 +85,7 @@ KILLER_SIDE_MAX_X = 1740
 MATCH_MIN = 0.80        # real "Me" entries score 0.84-0.93; HUD/map noise stays below 0.78
 GOLD_MIN = 150          # gold outline pixels around a real "Me" entry: 300-650; noise: mostly < 100
 CLUSTER_GAP = 30.0
+PRINT_MIN = 0.6         # entry text similarity: same entry 0.98-1.0 across keyframes, different entries ~0.3
 # Soft template (blurred, padded) so 1 px rendering/compression differences still match.
 ME_SOFT = cv2.copyMakeBorder(cv2.GaussianBlur(ME.astype(np.float32), (3, 3), 0),
                              2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0)
@@ -129,6 +130,38 @@ def gold_near(bgr, x, y):
     b = bgr[y0:y1, x0:x1].astype(int)
     B, G, R = b[..., 0], b[..., 1], b[..., 2]
     return int(((R > 190) & (G > 185) & (B < 160) & (np.abs(R - G) < 35)).sum())
+
+
+def entry_print(bgr, x, y):
+    """The white text and icons right of "Me" (weapon icon, victim name), downscaled.
+    Tells two entries apart that happen to sit at the same x and row. Only the white parts
+    count: the entry panels are semi-transparent, so the panel colour shifts with the scene
+    behind it (bright sky), but the white text doesn't."""
+    band = bgr[max(0, y - 8):y + 18, min(bgr.shape[1] - 1, x + 26):]
+    m = hard_white(band, 215)
+    return cv2.resize(m, (max(8, m.shape[1] // 3), max(4, m.shape[0] // 3)), interpolation=cv2.INTER_AREA)
+
+
+def print_sim(a, b):
+    """Normalised correlation of two entry prints (same entry 0.98-1.0, also over bright sky;
+    different entries ~0.3)."""
+    if a.shape[0] != b.shape[0]:
+        return 1.0                      # cut off at the frame edge: can't compare, assume same
+    w = min(a.shape[1], b.shape[1])
+    a, b = a[:, -w:] - a[:, -w:].mean(), b[:, -w:] - b[:, -w:].mean()
+    d = float(np.sqrt((a * a).sum() * (b * b).sum()))
+    return float((a * b).sum()) / d if d else 1.0
+
+
+def same_entry(e, fp):
+    """Could this sighting be the tracked entry e? Kills only: deaths are limited to one per
+    round anyway, and right of a victim-side "Me" there's little text to compare."""
+    if e["kind"] != "kill":
+        return True
+    a, b = e["fp"].sum(), fp.sum()
+    if b < 0.6 * a or a < 0.6 * b:         # much dimmer or brighter: the entry is fading out or in
+        return True
+    return print_sim(e["fp"], fp) >= PRINT_MIN
 
 
 def find_me(bgr):
@@ -278,21 +311,26 @@ def main():
         for x, y, v in find_me(img):
             if gold_near(img, x, y) < GOLD_MIN:     # "Me" inside someone's name, or noise
                 continue
-            hits.append(("kill" if X0 + x <= KILLER_SIDE_MAX_X else "death", x, y))
+            hits.append(("kill" if X0 + x <= KILLER_SIDE_MAX_X else "death", x, y, entry_print(img, x, y)))
         # Entries keep their x and only ever move up (older rows expire above them), so a
-        # hit continues an entry with the same kind and x at the same or a higher row.
+        # hit continues an entry with the same kind and x at the same or a higher row, and
+        # the same text right of "Me". The text check matters when an entry expires and a
+        # new one with a similar-length victim name takes its slot in the same keyframe step
+        # (07.19 match 7: "Me > DrankLog" then "Me > Undertaker" 0.5 s later, same row).
         active = [e for e in active if t - e["last"] <= expire]
         used = set()
         new = []
-        for kind, x, y in sorted(hits, key=lambda h: h[2]):
+        for kind, x, y, fp in sorted(hits, key=lambda h: h[2]):
             cands = [i for i, e in enumerate(active) if i not in used and e["kind"] == kind
-                     and abs(e["x"] - x) <= 4 and y <= e["y"] + 6]
+                     and abs(e["x"] - x) <= 4 and y <= e["y"] + 6 and same_entry(e, fp)]
             if cands:
                 i = min(cands, key=lambda i: active[i]["y"] - y)   # nearest row at/below
                 used.add(i)
                 active[i].update(y=y, last=t)
+                if fp.sum() >= 0.8 * active[i]["fp"].sum():       # keep the brightest print
+                    active[i]["fp"] = fp
             else:
-                new.append({"kind": kind, "x": x, "y": y, "last": t})
+                new.append({"kind": kind, "x": x, "y": y, "last": t, "fp": fp})
         for e in new:
             active.append(e)
             used.add(len(active) - 1)
