@@ -30,6 +30,12 @@ class Api:
         self._jobs = Jobs()
         self._watcher = music.Watcher(lambda a: self._added.append(a))
         self._rec = recorder.Recorder()
+        # a merge stopped by closing the app leaves "<name>.mp4.part": nothing is running now
+        try:
+            for f in merged_root().glob("*.mp4.part"):
+                f.unlink()
+        except OSError:
+            pass
 
     def _bind(self, window):
         self._window = window
@@ -205,6 +211,11 @@ class Api:
         for j in self._jobs.snapshot():
             if j["state"] in ("queued", "running"):
                 self._jobs.cancel(j["id"])
+        if not self._jobs.wait_idle(15):  # cleanup didn't finish: free the recordings directly
+            for j in self._jobs.snapshot():
+                if j["state"] == "running" and j["kind"] == "highlight":
+                    self._jobs._release(j["path"], "Stopped because Highlight Studio was closed")
+        self._jobs._save()
 
     # ------------------------------------------------------------ delete (Recycle Bin)
     def trash(self, kind, paths):

@@ -62,7 +62,7 @@ def main():
         if api.running_jobs():
             ok = window.create_confirmation_dialog(
                 "Jobs are still running",
-                "Closing Highlight Studio stops them. A stopped highlight run is marked failed and can be retried. Close anyway?")
+                "Closing Highlight Studio stops them. A stopped highlight run is marked failed and can be retried; a stopped merge or upload leaves nothing behind. Close anyway?")
             if not ok:
                 return False
             api.stop_all()

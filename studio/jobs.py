@@ -130,11 +130,35 @@ class Jobs:
         except (OSError, ValueError):
             return
         for j in saved:
+            if j.get("state") == "running" and j.get("kind") == "highlight":
+                self._release(j["path"], "Stopped because Highlight Studio was closed")
             if j.get("state") in ("queued", "running"):  # the app was closed while it ran
                 j.update(state="failed" if j["state"] == "running" else "cancelled",
                          ended=j.get("ended") or j.get("started") or time.time(),
                          error=j.get("error") or "Stopped because the app was closed")
             self.jobs.append(j)
+
+    @staticmethod
+    def _release(path, reason):
+        """Mark a recording whose run was cut off as failed, so Retry can start it again."""
+        try:
+            led = ledger.load()
+            e = led["recordings"].get(ledger.key_of(Path(path)))
+            if e and e.get("status") == "processing":
+                e.update(status="failed", failed_at=ledger.now_iso(), reason=reason)
+                ledger.save(led)
+        except Exception:
+            pass
+
+    def wait_idle(self, timeout):
+        """Wait until no job is running (used when the app closes after cancelling them)."""
+        end = time.time() + timeout
+        while time.time() < end:
+            with self.lock:
+                if not any(j["state"] == "running" for j in self.jobs):
+                    return True
+            time.sleep(0.2)
+        return False
 
     def _save(self):
         with self.lock:
@@ -340,6 +364,9 @@ class Jobs:
                         out_path = m.group(1)
         p.wait()
         if j.get("_cancel"):
+            # only one merge runs at a time, so any half-written output is this one's
+            for f in Path(SETTINGS["merged_root"]).glob("*.mp4.part"):
+                f.unlink(missing_ok=True)
             return self._finish(j, "cancelled", error="Cancelled")
         if p.returncode == 0 and out_path:
             return self._finish(j, "done", step=len(MERGE_STEPS) - 1, out=out_path,

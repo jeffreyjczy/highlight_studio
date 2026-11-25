@@ -651,16 +651,19 @@ def main():
     fc, moments = build_graph(items, a, midx, minfo, total)
     out = free_name(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    part = out.with_name(out.name + ".part")  # renamed to out only when ffmpeg finished
     fcfile = Path(tmp) / "graph.txt"
     fcfile.write_text(fc, encoding="utf-8")
     # "-/filter_complex <file>" reads the graph from a file (ffmpeg 7+; graphs get long)
     cmd += ["-/filter_complex", str(fcfile), "-map", "[vout]", "-map", "[aout]",
             "-t", f"{total:.3f}", "-c:v", "h264_amf", "-quality", "quality", "-b:v", f"{a.mbps}M",
-            "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", str(out)]
+            "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", "-f", "mp4", str(part)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
+        part.unlink(missing_ok=True)
         sys.exit(f"ffmpeg failed:\n{r.stderr[-3000:]}")
 
+    part.replace(out)
     actual, _ = probe(out)
     side = {"out": str(out), "length": round(actual, 2), "style": a.style, "order": order,
             "music": str(music) if music else None,
