@@ -37,17 +37,18 @@ colour, adds glow and a zoom blur at the edges, like popular "satisfying clips" 
   (a dual-wield look). Only good when the weapon is big on the lower right and the middle of the frame
   is open (a corridor or a doorway), not when an enemy or a wall sits in the middle.
 
-Pick the frame that looks most striking WITHOUT any text: a colourful weapon skin big in view, an enemy
-clearly visible or a kill effect, bright, sharp, good depth, nothing blocking the view (no menus,
+Pick the frame that looks most striking WITHOUT any text: an enemy clearly visible, a kill effect or
+colourful abilities, the weapon well in view, bright, sharp, good depth, nothing blocking the view (no menus,
 scoreboard, death screen or smoke wall). Avoid frames with HUD icons in the middle area that the crop
 would keep, such as a big skull kill icon or a "SPIKE CARRIER KILLED" banner. Then choose the style that
 suits it best.
 
 Also write a creative YouTube title (at most 70 characters) in the style of big gaming channels:
 curiosity, mood or a promise, not a plain description. Honest to the video, no emoji, no hashtags,
-never match or round numbers. Only name a weapon, skin, agent or map if you are sure from the frames. Examples: "{mins} Minutes of Satisfying {game} Clips",
-"This Vandal Should Be Illegal", "When Every Shot Just Lands", "My Aim Was Possessed Tonight",
-"The Cleanest Ace I've Ever Hit".
+never match or round numbers. The title is about the plays and how they feel (aim, reactions, clutches,
+pace), never about weapons or skins: do not name or describe a weapon, skin or its colours.
+Examples: "{mins} Minutes of Satisfying {game} Clips", "When Every Shot Just Lands",
+"My Aim Was Possessed Tonight", "The Cleanest Ace I've Ever Hit", "They Never Saw It Coming".
 
 Do not change any files. Reply with only this JSON, nothing else:
 {{"pick": <number>, "layout": "clean" or "mirror", "title": "<title>", "why": "<one short sentence>"}}"""
