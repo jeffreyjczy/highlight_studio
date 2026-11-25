@@ -494,7 +494,7 @@ function pageSettings() {
    ${(() => { const y = D.yt || {};
      if (!y.client) return row('YouTube uploads', 'Not set up yet. A one-time setup of about 15 minutes lets the app upload merged videos to your channel when you press Upload.', `<button class="btn sm primary" data-action="yt-setup">Set up</button>`);
      if (!y.signed_in) return row('YouTube uploads', y.error ? esc(y.error) : 'Client file added. Sign in with the Google account that owns your channel.', `<button class="btn sm" data-action="yt-setup">Setup steps</button><button class="btn sm primary" data-action="yt-signin">Sign in</button>`);
-     return row('YouTube uploads', `Signed in as <b>${esc(y.channel.title)}</b>. Uploads default to Private.`, `<span class="okline">${ic('check')}Connected</span><button class="btn sm" data-action="yt-setup">Setup steps</button><button class="btn sm ghost" data-action="yt-signout">Sign out</button>`);
+     return row('YouTube uploads', `Signed in as <b>${esc(y.channel.title)}</b>. Uploads default to Private. Google may ask you to sign in again about once a week; the app opens it for you.`, `<span class="okline">${ic('check')}Connected</span><button class="btn sm" data-action="yt-setup">Setup steps</button><button class="btn sm ghost" data-action="yt-signout">Sign out</button>`);
    })()}
    <div class="shead">Folders</div>
    ${row('Recordings', esc(D.roots.recordings) + '. Set by the pipeline.', `<button class="btn sm" data-action="open-folder" data-k="recordings">Open</button>`)}
@@ -754,7 +754,7 @@ function ytGuide() {
     <ol class="ysteps">
      ${step(1, 'Create a Google Cloud project', 'Sign in with the Google account that owns your YouTube channel, then create a project named "Highlight Studio".', link('https://console.cloud.google.com/projectcreate', 'Open project page'))}
      ${step(2, 'Turn on the YouTube Data API v3', 'With the new project selected, click Enable.', link('https://console.cloud.google.com/apis/library/youtube.googleapis.com', 'Open YouTube Data API'))}
-     ${step(3, 'Set up the consent screen', 'User type <b>External</b>. Fill in the app name and your email. Under Data access, add the scopes <code>youtube.upload</code> and <code>youtube.readonly</code>. Then under Audience, choose <b>Publish app</b> so you stay signed in (in Testing mode you\'d have to sign in again every 7 days).', link('https://console.cloud.google.com/auth/overview', 'Open consent screen'))}
+     ${step(3, 'Set up the consent screen', 'User type <b>External</b>. Under Branding, fill in only the app name and your email: leave the logo, links and domains empty. Under Data access, add the scopes <code>youtube.upload</code> and <code>youtube.readonly</code>. Under Audience, leave it in <b>Testing</b> and add your own Gmail under <b>Test users</b>. In Testing, Google asks you to sign in again about once a week; the app opens that sign-in for you when you upload.', link('https://console.cloud.google.com/auth/overview', 'Open consent screen'))}
      ${step(4, 'Create the app key', 'Clients → Create client → Application type <b>Desktop app</b> → Create → <b>Download JSON</b>.', link('https://console.cloud.google.com/auth/clients', 'Open clients'))}
      ${step(5, 'Connect it here', `Choose the JSON file you downloaded, then sign in. Google warns "Google hasn't verified this app" because it's your own private app: choose <b>Advanced → Go to Highlight Studio</b>.`,
        `<div class="jobacts"><button class="btn sm ${yt.client ? '' : 'primary'}" data-action="yt-client">${yt.client ? ic('check') + 'Client file added' : 'Choose client file'}</button><button class="btn sm ${yt.client && !yt.signed_in ? 'primary' : ''}" data-action="yt-signin" ${yt.client ? '' : 'disabled'}>${yt.signed_in ? ic('check') + 'Signed in as ' + esc(yt.channel.title) : 'Sign in'}</button></div>`)}
@@ -943,8 +943,14 @@ document.addEventListener('click', async e => {
       toast(r.ok && D.yt.signed_in ? `Signed in as ${D.yt.channel.title}` : "Sign-in didn't finish", r.ok ? (D.yt.error || '') : r.error);
       if (dlg.open) ytGuide(); render(); break; }
     case 'yt-signout': await API().yt_sign_out(); await refreshYt(); toast('Signed out of YouTube'); render(); break;
-    case 'upload-yt': { const m = D.merged.find(x => x.id === id); if (!m) break; t.disabled = true; await refreshYt(); t.disabled = false;
-      if (D.yt.signed_in) uploadDialog(m); else ytGuide(); break; }
+    case 'upload-yt': { const m = D.merged.find(x => x.id === id); if (!m) break; t.disabled = true; await refreshYt();
+      if (!D.yt.signed_in && D.yt.client) {  // set up before but the sign-in expired (Testing mode: weekly): sign in, then continue
+        toast('Signing in to YouTube', 'Finish in your browser. The upload form opens right after.');
+        const r = await API().yt_sign_in(); await refreshYt();
+        if (!r.ok) toast("Sign-in didn't finish", r.error);
+      }
+      t.disabled = false;
+      if (D.yt.signed_in) uploadDialog(m); else if (!D.yt.client) ytGuide(); break; }
     case 'yt-upload': startUpload(); break;
     case 'fs-enter': enterTheater(t.closest('.vwrap')); break;
     case 'fs-exit': exitTheater(); break;

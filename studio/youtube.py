@@ -75,6 +75,9 @@ def _creds():
             try:
                 creds.refresh(Request())
             except Exception as e:
+                if "invalid_grant" in str(e):  # expired (Testing mode: after 7 days) or revoked: start clean
+                    sign_out()
+                    raise YTError("The YouTube sign-in expired (Google does this weekly for apps in Testing). Sign in again.")
                 raise YTError(_friendly(e))
             TOKEN.write_text(creds.to_json(), encoding="utf-8")
         else:
