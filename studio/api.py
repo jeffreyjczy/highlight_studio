@@ -10,6 +10,7 @@ from pathlib import Path
 
 import library
 import music
+import recorder
 from common import (CLAUDE, DATA, HIGHLIGHTS_ROOT, NO_WINDOW, PIPE, PYTHON, RECORDINGS_ROOT, SETTINGS,
                     is_inside, ledger, merged_root, music_root, run, save_settings)
 from jobs import Jobs
@@ -28,6 +29,7 @@ class Api:
         self._added = []  # music that the Downloads watcher brought in, for UI toasts
         self._jobs = Jobs()
         self._watcher = music.Watcher(lambda a: self._added.append(a))
+        self._rec = recorder.Recorder()
 
     def _bind(self, window):
         self._window = window
@@ -79,7 +81,7 @@ class Api:
     def settings_set(self, patch):
         for k, v in (patch or {}).items():
             if k in ("merged_root", "music_root", "jobs_at_once", "valorant_model", "watch_downloads",
-                     "theme", "last_page", "merge", "window"):
+                     "theme", "last_page", "merge", "window", "rec_hotkey"):
                 SETTINGS[k] = v
         save_settings(SETTINGS)
         return SETTINGS
@@ -168,7 +170,18 @@ class Api:
     # ------------------------------------------------------------ jobs
     def jobs(self):
         added, self._added = self._added, []
-        return {"jobs": self._jobs.snapshot(), "watch": self._watcher.status(), "music_added": added}
+        return {"jobs": self._jobs.snapshot(), "watch": self._watcher.status(), "music_added": added,
+                "rec": self._rec.status()}
+
+    # ------------------------------------------------------------ recording (AMD Adrenalin hotkey)
+    def rec_toggle(self):
+        return self._rec.toggle()
+
+    def rec_status(self):
+        return self._rec.status()
+
+    def rec_info(self):
+        return self._rec.info()
 
     def make_highlights(self, paths):
         n = 0

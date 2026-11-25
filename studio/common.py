@@ -35,6 +35,7 @@ DEFAULTS = {
     "valorant_model": "sonnet",
     "watch_downloads": True,
     "theme": "system",
+    "rec_hotkey": "Ctrl+Shift+E",
     "last_page": "footage",
     "merge": {"fmt": "short", "hq": True, "style": "punchy", "music": "any"},
 }

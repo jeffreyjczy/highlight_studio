@@ -173,7 +173,27 @@ function renderTop() {
   setAttr($('#jBtn'), 'aria-pressed', S.jobsOpen);
   setHTML($('#qBtn'), `${ic('queue')}<span>Merge queue</span><span class="count num ${S.queue.length ? '' : 'zero'}">${S.queue.length}</span>`);
   setAttr($('#qBtn'), 'aria-pressed', S.queueOpen);
+  renderRec();
 }
+/* recording (AMD Adrenalin, via its record hotkey). The timer shows minutes only and is
+   refreshed every 15 s from started_at: no backend calls, one text node. */
+function recElapsed() {
+  const m = Math.max(0, Math.floor((Date.now() / 1000 - D.rec.started_at) / 60));
+  return m < 1 ? '<1m' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+function renderRec() {
+  const r = D.rec, box = $('#recBox'); if (!box) return;
+  if (!r) return setHTML(box, '');
+  const hk = esc(r.hotkey || 'Ctrl+Shift+E');
+  if (r.phase === 'starting' || r.phase === 'stopping')
+    return setHTML(box, `<button class="tb-btn recbtn" disabled>${ic('loader', 'spin')}<span>${r.phase === 'starting' ? 'Starting…' : 'Stopping…'}</span></button>`);
+  if (r.recording) {
+    const tip = `Recording ${esc(r.game)} since ${new Date(r.started_at * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}, ${size(r.size)} so far`;
+    return setHTML(box, `<span class="recpill" title="${tip}"><span class="rec-dot"></span><b>REC</b><span class="recgame">${esc(r.game)}</span><span class="num" data-recel>${recElapsed()}</span></span><button class="tb-btn recstop" data-action="rec-toggle" title="Stop recording (${hk})">Stop</button>`);
+  }
+  setHTML(box, `<button class="tb-btn recbtn" data-action="rec-toggle" title="Start AMD Adrenalin recording (${hk})"><span class="rec-dot idle"></span><span>Record</span></button>`);
+}
+function tickRec() { if (D.rec && D.rec.recording) { const t = recElapsed(); document.querySelectorAll('[data-recel]').forEach(el => { if (el.textContent !== t) el.textContent = t; }); } }
 function renderNav() {
   const nClips = D.sets.reduce((a, s) => a + s.clips.length, 0);
   const items = [['footage', 'video', 'Footage', D.footage.length], ['shorts', 'scissors', 'Shorts', nClips],
@@ -207,9 +227,12 @@ function filteredRecs() {
 function jobPct(j) { return j && j.state === 'running' ? Math.round(((j.step || 0) + 0.5) / (j.steps || []).length * 100) : 0; }
 function pill(r) {
   const st = effStatus(r), j = jobFor(r.path);
+  if (D.rec && D.rec.recording && D.rec.path.toLowerCase() === r.path.toLowerCase())  // live, even while still "too small"
+    return `<span class="pill st-recording"><span class="rec-dot"></span>Recording <span class="num" data-recel>${recElapsed()}</span></span>`;
   if (st === 'done') return `<span class="pill st-done">${ic('check')}${r.clips != null ? plural(r.clips, 'short') : 'Done'}</span>`;
   if (st === 'processing') return `<span class="pill st-processing">${ic('loader', 'spin')}${j ? esc(j.steps[j.step] || 'Processing') : 'Processing'}</span>`;
-  if (st === 'recording') return `<span class="pill st-recording"><span class="rec-dot"></span>Recording</span>`;
+  if (st === 'recording')
+    return `<span class="pill st-recording" title="The recorder still has this file open. It can be processed once it's released (closing AMD Software releases it).">Finishing</span>`;
   return `<span class="pill st-${st}">${STATUS[st] || esc(st)}</span>`;
 }
 function thumbBox(path, durS, f, extra = '', portrait = false) {
@@ -506,6 +529,12 @@ function pageSettings() {
      `<select class="select" id="setJobs">${[1, 2].map(n => `<option ${+st.jobs_at_once === n ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
    ${row('Game playbooks', 'The rules the highlight maker follows for each game, in plain view. To change one, ask Claude in the terminal.',
      `<button class="btn sm" data-action="playbooks">${ic('book')}View playbooks</button>`)}
+   <div class="shead">Recording</div>
+   ${(() => { const ri = D.recInfo || {};
+     return row('AMD Adrenalin', ri.adrenalin === false ? "AMD Software isn't running, so the Record button can't start a recording." : `The Record button in the top bar presses Adrenalin's record hotkey.${ri.output ? ` Adrenalin saves to ${esc(ri.output)}.` : ''}`,
+       ri.adrenalin === false ? `<span class="badline">${ic('warn')}Not running</span>` : ri.output_ok === false ? `<span class="badline">${ic('warn')}Saves outside ${esc(ri.recordings)}</span>` : `<span class="okline">${ic('check')}Ready</span>`)
+     + row('Record hotkey', 'Must match Adrenalin → Settings → Hotkeys → Record video. Click the box and press the keys.',
+       `<input type="text" class="hkin" id="recKey" readonly value="${esc(st.rec_hotkey || 'Ctrl+Shift+E')}" aria-label="Record hotkey">`); })()}
    <div class="shead">YouTube</div>
    ${(() => { const y = D.yt || {};
      if (!y.client) return row('YouTube uploads', 'Not set up yet. A one-time setup of about 15 minutes lets the app upload merged videos to your channel when you press Upload.', `<button class="btn sm primary" data-action="yt-setup">Set up</button>`);
@@ -875,7 +904,10 @@ async function copyText(text, el) {
 async function pollJobs() {
   let r; try { r = await API().jobs(); } catch (_) { return; }
   D.jobs = DEMO ? [...DEMO_JOBS, ...r.jobs] : r.jobs; D.watch = r.watch;
-  let reloadF = false, reloadS = false, reloadM = false;
+  const wasRec = D.rec ? D.rec.recording : null, wasPhase = D.rec ? D.rec.phase : '';
+  D.rec = r.rec;
+  if (r.rec.phase === 'failed' && wasPhase !== 'failed') toast(wasPhase === 'stopping' ? "Recording didn't stop" : "Recording didn't start", r.rec.error, ['Settings', 'nav', 'settings']);
+  let reloadF = wasRec !== null && wasRec !== r.rec.recording, reloadS = false, reloadM = false;
   for (const j of D.jobs) {
     const prev = prevJobState.get(j.id);
     if (prev && prev !== j.state) {
@@ -985,6 +1017,11 @@ document.addEventListener('click', async e => {
     case 'yt-setup': await refreshYt(); ytGuide(); break;
     case 'yt-client': { const r = await API().yt_choose_client(); if (!r.ok && r.error) toast("That file didn't work", r.error);
       await refreshYt(); if (dlg.open) ytGuide(); render(); break; }
+    case 'rec-toggle': {
+      t.disabled = true;
+      const r = await API().rec_toggle();
+      if (!r.ok) { t.disabled = false; toast("Can't control recording", r.error, ['Settings', 'nav', 'settings']); break; }
+      await pollJobs(); break; }
     case 'yt-signin': { t.disabled = true; toast('Finish signing in in your browser', 'Choose your channel\'s Google account, then Advanced → Go to Highlight Studio.');
       const r = await API().yt_sign_in(); await refreshYt();
       toast(r.ok && D.yt.signed_in ? `Signed in as ${D.yt.channel.title}` : "Sign-in didn't finish", r.ok ? (D.yt.error || '') : r.error);
@@ -1092,6 +1129,14 @@ document.addEventListener('input', e => {
   if (e.target.id === 'ncsQ') S.ncsQ = e.target.value;
 });
 document.addEventListener('keydown', e => {
+  if (e.target.id === 'recKey') {
+    e.preventDefault();
+    const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    if (!/^[A-Z0-9]$|^F\d{1,2}$/.test(k)) return;
+    const hk = [e.ctrlKey && 'Ctrl', e.shiftKey && 'Shift', e.altKey && 'Alt', e.metaKey && 'Win', k].filter(Boolean).join('+');
+    e.target.value = hk; S.settings.rec_hotkey = hk; API().settings_set({rec_hotkey: hk});
+    if (D.rec) D.rec.hotkey = hk; renderRec(); toast('Record hotkey saved', hk); return;
+  }
   if (theaterEl && e.key === 'Escape') { e.preventDefault(); exitTheater(); return; }
   if (e.target.id === 'ncsQ' && e.key === 'Enter') { ncsSearch(); return; }
   if (e.target.id === 'linkIn' && e.key === 'Enter') { document.querySelector('[data-action="lookup"]')?.click(); return; }
@@ -1165,12 +1210,14 @@ async function boot() {
     const r = D.footage.find(x => x.status === 'done') || D.footage[0]; if (r) { S.detailRec = r.id; render(); }
   }
   refreshYt().then(() => { if (S.page === 'settings') render(); });
+  API().rec_info().then(ri => { D.recInfo = ri; if (S.page === 'settings') render(); });
   // polling: jobs every second while something runs, every 4 s when idle; nothing but
   // a slow jobs check while the window is minimised or hidden
   let tick = 0;
   setInterval(() => {
     tick++;
-    const busy = D.jobs.some(j => j.state === 'running' || j.state === 'queued') || (D.watch && (D.watch.waiting.length || D.watch.ytal));
+    const busy = D.jobs.some(j => j.state === 'running' || j.state === 'queued') || (D.watch && (D.watch.waiting.length || D.watch.ytal)) || (D.rec && (D.rec.phase === 'starting' || D.rec.phase === 'stopping'));
+    if (tick % 15 === 0 && !document.hidden) tickRec();
     if (document.hidden ? tick % 10 === 0 : (busy || tick % 4 === 0)) pollJobs();
   }, 1000);
   setInterval(() => { if (!document.hidden) loadDisk(); }, 30000);
