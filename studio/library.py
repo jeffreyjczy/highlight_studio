@@ -119,9 +119,11 @@ def scan_footage():
             "id": file_id(p), "path": str(p), "file": p.name, "game": p.parent.name, "status": status,
             "size": st.st_size, "ts": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="minutes"),
             "recorded": recorded_at(p.name) or datetime.fromtimestamp(st.st_mtime).isoformat(timespec="minutes"),
-            "dur": info["dur"], "res": res_label(info),
+            "dur": info["dur"], "res": res_label(info), "w": info["w"], "h": info["h"], "fps": info["fps"],
+            "audio": info["audio"],
             "clips": (e or {}).get("clip_count"), "clips_dir": (e or {}).get("clips_dir"),
-            "reason": (e or {}).get("reason"),
+            "reason": (e or {}).get("reason"), "completed_at": (e or {}).get("completed_at"),
+            "failed_at": (e or {}).get("failed_at"),
         })
     save_probe_cache()
     return rows
@@ -241,6 +243,29 @@ def scan_merged():
             "clips": [c.get("file") for c in side.get("clips", [])],
         })
     save_probe_cache()
+    return out
+
+
+def playbooks():
+    """Game playbooks rendered to HTML (read-only viewer; they're edited with Claude outside the app)."""
+    from markdown_it import MarkdownIt
+    from common import PIPE, RECORDINGS_ROOT
+    md = MarkdownIt("commonmark", {"html": False}).enable("table")
+    gdir = PIPE / "games"
+    files = sorted(gdir.glob("*.md"), key=lambda f: (f.stem.startswith("_"), f.stem.lower()))
+    own = {f.stem.lower() for f in files if not f.stem.startswith("_")}
+    folders = sorted({p.name for p in RECORDINGS_ROOT.iterdir() if p.is_dir()} |
+                     {p.name for p in HIGHLIGHTS_ROOT.iterdir() if p.is_dir()}) if RECORDINGS_ROOT.exists() else []
+    out = []
+    for f in files:
+        text = f.read_text(encoding="utf-8-sig")
+        default = f.stem.startswith("_")
+        used_by = [g for g in folders if g.lower() not in own] if default else [f.stem]
+        out.append({
+            "id": f.stem, "game": "Other games" if default else f.stem, "default": default, "file": str(f),
+            "updated": datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="minutes"),
+            "used_by": used_by, "html": md.render(text),
+        })
     return out
 
 

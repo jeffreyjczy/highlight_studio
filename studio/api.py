@@ -60,6 +60,22 @@ class Api:
     def merged(self):
         return library.scan_merged()
 
+    def playbooks(self):
+        return library.playbooks()
+
+    def reveal_playbook(self, file):
+        p = Path(file)
+        if p.parent.resolve() == (PIPE / "games").resolve() and p.exists():
+            subprocess.Popen(["explorer", "/select,", str(p)], creationflags=NO_WINDOW)
+
+    def set_fullscreen(self, on):
+        """Real full screen for the video viewer: hides the window's title bar and its close button."""
+        on = bool(on)
+        if self._window and on != getattr(self, "_fs", False):
+            self._window.toggle_fullscreen()
+            self._fs = on
+        return on
+
     def settings_set(self, patch):
         for k, v in (patch or {}).items():
             if k in ("merged_root", "music_root", "jobs_at_once", "valorant_model", "watch_downloads",

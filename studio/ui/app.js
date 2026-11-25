@@ -36,6 +36,8 @@ const P = {
  refresh:'<path d="M16.5 10a6.5 6.5 0 01-11.6 4M3.5 10a6.5 6.5 0 0111.6-4"/><path d="M15.5 2.5v3.5H12M4.5 17.5V14H8"/>',
  disk:'<rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M14 10h.01"/>',
  link:'<path d="M8.5 11.5a3.5 3.5 0 005 0l2.5-2.5a3.5 3.5 0 00-5-5l-1 1"/><path d="M11.5 8.5a3.5 3.5 0 00-5 0L4 11a3.5 3.5 0 005 5l1-1"/>',
+ expand:'<path d="M3 7.5V3h4.5M17 7.5V3h-4.5M3 12.5V17h4.5M17 12.5V17h-4.5"/>',
+ book:'<path d="M3.5 4.5c2-1 4.5-1 6.5.5 2-1.5 4.5-1.5 6.5-.5v11c-2-1-4.5-1-6.5.5-2-1.5-4.5-1.5-6.5-.5z"/><path d="M10 5v11"/>',
 };
 const ic = (n, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 20 20" aria-hidden="true">${P[n]}</svg>`;
 
@@ -105,6 +107,40 @@ async function loadMusic() { D.tracks = await API().music_list(); D.loaded.music
 async function loadDisk() { D.disk = await API().disk(); renderTop(); }
 const clipOfPath = p => clipByPath.get(String(p).toLowerCase());
 
+/* ---------- video player with an in-app full screen ----------
+   The browser's own full screen only fills the app's web area and leaves the window's
+   title bar (and its close button) showing, with no way out except Esc. This mode makes
+   the window itself full screen and shows an "Exit full screen" X at the top left. */
+function videoBox(path, title, autoplay = false) {
+  return `<div class="vwrap"><video controls ${autoplay ? 'autoplay' : ''} preload="metadata" controlslist="nofullscreen nodownload noremoteplayback" disablepictureinpicture src="${mediaUrl(path)}"></video>
+    <button class="vfs" data-action="fs-enter" title="Full screen (or double-click the video)" aria-label="Full screen">${ic('expand')}</button>
+    <div class="vtop"><button class="vclose" data-action="fs-exit" aria-label="Exit full screen">${ic('x')}<span>Exit full screen</span></button><span class="vtitle">${esc(title)}</span></div></div>`;
+}
+let theaterEl = null, idleT = null;
+function enterTheater(wrap) {
+  if (!wrap || theaterEl) return;
+  theaterEl = wrap; wrap.classList.add('theater'); API().set_fullscreen(true); wakeTheater();
+}
+function exitTheater() {
+  if (theaterEl) { theaterEl.classList.remove('theater', 'idle'); theaterEl = null; }
+  clearTimeout(idleT); API().set_fullscreen(false);
+}
+function wakeTheater() {
+  if (!theaterEl) return;
+  theaterEl.classList.remove('idle'); clearTimeout(idleT);
+  idleT = setTimeout(() => theaterEl && theaterEl.classList.add('idle'), 2500);
+}
+document.addEventListener('dblclick', e => {
+  const v = e.target.closest('.vwrap video'); if (!v) return;
+  e.preventDefault(); e.stopPropagation();
+  theaterEl ? exitTheater() : enterTheater(v.closest('.vwrap'));
+}, true);
+document.addEventListener('fullscreenchange', () => {  // fallback if the browser's full screen still gets triggered
+  const fe = document.fullscreenElement;
+  if (fe && fe.tagName === 'VIDEO') { document.exitFullscreen().catch(() => {}); enterTheater(fe.closest('.vwrap')); }
+});
+document.addEventListener('mousemove', () => { if (theaterEl) wakeTheater(); }, true);
+
 /* ---------- shell ---------- */
 function renderTop() {
   const d = D.disk;
@@ -133,6 +169,7 @@ function render() {
   m.innerHTML = fn();
   m.scrollTop = keep;
   renderQueue(); renderFlyout();
+  if (theaterEl && !theaterEl.isConnected) exitTheater();
 }
 const loadingPage = (title) => `<div class="page"><div class="pagehead"><h1>${title}</h1></div><div class="loading">${ic('loader', 'spin')}Reading your folders…</div></div>`;
 
@@ -165,7 +202,7 @@ function recCard(r) {
   const sel = S.sel.footage.has(r.id), dis = !selectable(r), j = jobFor(r.path), st = effStatus(r);
   const extra = `${dis ? '' : `<button class="chk" data-action="check" data-id="${r.id}" data-kind="footage" role="checkbox" aria-checked="${sel}" aria-label="Select">${ic('check')}</button>`}
     ${pill(r)}<span class="dur num">${dur(r.dur)}</span>${st === 'processing' ? `<span class="progress"><i style="width:${jobPct(j)}%"></i></span>` : ''}`;
-  return `<div class="card ${sel ? 'selected' : ''} ${dis ? 'disabled' : ''}" data-action="card" data-id="${r.id}" data-kind="footage" title="${esc(r.file)}">
+  return `<div class="card ${sel ? 'selected' : ''} ${dis ? 'disabled' : ''} ${S.detailRec === r.id ? 'open' : ''}" data-action="card" data-id="${r.id}" data-kind="footage" title="${esc(r.file)}">
     ${thumbBox(r.path, r.dur, 0.1, extra)}
     <div class="cname">${esc(when(r.recorded))}</div>
     <div class="cmeta num"><span>${size(r.size)}</span>${r.res ? `<span>${esc(r.res)}</span>` : ''}${st === 'failed' && r.reason ? `<span class="bad" title="${esc(r.reason)}">${esc(r.reason.slice(0, 60))}</span>` : ''}</div></div>`;
@@ -229,13 +266,21 @@ function pageShorts() {
   else if (!sets.length) h += `<div class="empty"><b>No shorts match</b>Clear the search or lower the minimum score.</div>`;
   for (const g of games) {
     const col = S.collapsed.has('s:' + g);
-    h += `<section class="group ${col ? 'collapsed' : ''}"><div class="ghead"><button class="toggle" data-action="collapse" data-g="s:${esc(g)}" aria-expanded="${!col}">${ic('chevron')}<span class="gdot" style="background:${gameColor(g)}"></span>${esc(g)}</button></div><div class="gbody">`;
     const gs = sets.filter(s => s.game === g).sort((a, b) => b.label.localeCompare(a.label));
+    const allClosed = gs.every(s => S.collapsed.has('r:' + s.id));
+    h += `<section class="group ${col ? 'collapsed' : ''}"><div class="ghead"><button class="toggle" data-action="collapse" data-g="s:${esc(g)}" aria-expanded="${!col}">${ic('chevron')}<span class="gdot" style="background:${gameColor(g)}"></span>${esc(g)}</button>
+      <span class="gmeta num">${plural(gs.length, 'recording')}, ${plural(gs.reduce((a, s) => a + s.vis.length, 0), 'short')}</span><span class="grow"></span>
+      ${gs.length > 1 ? `<button class="linkbtn" data-action="collapse-sets" data-g="${esc(g)}" data-mode="${allClosed ? 'expand' : 'collapse'}">${allClosed ? 'Expand all' : 'Collapse all'}</button>` : ''}</div><div class="gbody">`;
     for (const s of gs) {
       const older = !s.current && D.sets.some(o => o.current && o.path.toLowerCase().startsWith(s.path.toLowerCase() + '\\'));
-      h += `<div class="sub-ghead">${ic('folder')}<strong>${esc(s.label)}</strong>${older ? '<span class="oldtag">Earlier run</span>' : ''}<span class="num">${plural(s.vis.length, 'short')}</span><span class="grow"></span>
+      const closed = S.collapsed.has('r:' + s.id);
+      const scores = s.vis.map(c => c.score).filter(x => x != null), best = scores.length ? Math.max(...scores) : null;
+      const nSel = s.vis.filter(c => S.sel.shorts.has(c.id)).length;
+      h += `<div class="setgroup ${closed ? 'collapsed' : ''}"><div class="sub-ghead" data-set-id="${s.id}">
+        <button class="subtoggle" data-action="collapse" data-g="r:${s.id}" aria-expanded="${!closed}">${ic('chevron')}${ic('folder')}<strong>${esc(s.label)}</strong></button>
+        ${older ? '<span class="oldtag">Earlier run</span>' : ''}<span class="num">${plural(s.vis.length, 'short')}${best != null ? `, best ${best}` : ''}${nSel ? `, <span class="inqueue">${nSel} selected</span>` : ''}</span><span class="grow"></span>
         <button class="linkbtn" data-action="reveal" data-p="${esc(s.path)}">Show in folder</button><button class="linkbtn" data-action="sel-set" data-id="${s.id}">Select all</button></div>
-        <div class="grid small">${s.vis.map(clipCard).join('')}</div>`;
+        <div class="grid small">${closed ? '' : s.vis.map(clipCard).join('')}</div></div>`;
     }
     h += `</div></section>`;
   }
@@ -250,7 +295,7 @@ function clipCard(c) {
   const sel = S.sel.shorts.has(c.id), q = S.queue.some(p => p.toLowerCase() === c.path.toLowerCase());
   const extra = `<button class="chk" data-action="check" data-id="${c.id}" data-kind="shorts" role="checkbox" aria-checked="${sel}" aria-label="Select">${ic('check')}</button>
     ${c.score != null ? `<span class="score num ${c.score >= 85 ? 'top' : ''}" title="Score">${c.score}</span>` : ''}<span class="dur num">${dur(c.len)}</span>`;
-  return `<div class="card ${sel ? 'selected' : ''}" data-action="open-clip" data-id="${c.id}" data-kind="shorts" title="${esc(c.file)}">
+  return `<div class="card ${sel ? 'selected' : ''} ${S.detail === c.id ? 'open' : ''}" data-action="open-clip" data-id="${c.id}" data-kind="shorts" title="${esc(c.file)}">
     ${thumbBox(c.path, c.len, 0.4, extra)}
     <div class="cname">${esc(c.title)}</div>
     <div class="cmeta">${c.n != null ? `<span class="num">#${String(c.n).padStart(2, '0')}</span>` : ''}${q ? '<span class="inqueue">In merge queue</span>' : ''}${c.used ? `<span class="used">${ic('stack')}Used in ${plural(c.used, 'merge')}</span>` : ''}</div></div>`;
@@ -404,6 +449,8 @@ function pageSettings() {
      `<select class="select" id="setModel"><option value="sonnet" ${st.valorant_model === 'sonnet' ? 'selected' : ''}>Sonnet</option><option value="default" ${st.valorant_model === 'default' ? 'selected' : ''}>Same as other games</option></select>`)}
    ${row('Highlight runs at the same time', 'Each recording gets its own agent. Running two at once is faster but heavier on the PC.',
      `<select class="select" id="setJobs">${[1, 2].map(n => `<option ${+st.jobs_at_once === n ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
+   ${row('Game playbooks', 'The rules the highlight maker follows for each game, in plain view. To change one, ask Claude in the terminal.',
+     `<button class="btn sm" data-action="playbooks">${ic('book')}View playbooks</button>`)}
    <div class="shead">Folders</div>
    ${row('Recordings', esc(D.roots.recordings) + '. Set by the pipeline.', `<button class="btn sm" data-action="open-folder" data-k="recordings">Open</button>`)}
    ${row('Shorts', esc(D.roots.highlights) + '. Set by the pipeline.', `<button class="btn sm" data-action="open-folder" data-k="highlights">Open</button>`)}
@@ -442,13 +489,18 @@ function renderFlyout() {
     host.querySelector('.flyout.jobs').dataset.sig = sig;
     return;
   }
+  if (S.detailRec) {
+    const r = recById.get(S.detailRec);
+    if (r) return recPanel(host, r);
+    S.detailRec = null;
+  }
   const c = S.detail && clipById.get(S.detail);
   if (!c) { S.detail = null; host.innerHTML = ''; return; }
   const s = setOfClip.get(c.id), q = S.queue.some(p => p.toLowerCase() === c.path.toLowerCase());
   const yt = (label, val, k) => val ? `<div class="yt-row"><div><small>${label}</small><p>${esc(val)}</p></div><button class="iconbtn" data-action="copy" data-k="${k}" aria-label="Copy ${label}">${ic('copy')}</button></div>` : '';
   const parts = c.parts && typeof c.parts === 'object' ? c.parts : null;
   const html = `<div class="flyout" role="dialog" aria-label="${esc(c.title)}"><div class="flyhead"><h2 title="${esc(c.title)}">${esc(c.title)}</h2><button class="iconbtn" data-action="close-detail" aria-label="Close">${ic('x')}</button></div>
-   <div class="flybody"><div class="detail-player"><video controls preload="metadata" src="${mediaUrl(c.path)}"></video></div>
+   <div class="flybody">${videoBox(c.path, c.title)}
    <div class="cmeta num" style="padding:0">${c.score != null ? `<span>Score ${c.score}</span>` : ''}<span>${dur(c.len)}</span>${c.n != null ? `<span>#${String(c.n).padStart(2, '0')}</span>` : ''}<span>${esc(c.game)}</span>${c.used ? `<span>Used in ${plural(c.used, 'merge')}</span>` : ''}</div>
    ${parts ? `<div class="meters">${[['hook', 'Hook'], ['action', 'Action'], ['payoff', 'Payoff']].map(([k, l]) => `<div class="meter">${l} <span class="num">${parts[k] ?? '-'}/10</span><div><i style="width:${(parts[k] || 0) * 10}%"></i></div></div>`).join('')}</div>` : ''}
    ${c.title || c.desc || c.tags ? `<div class="sectionlabel">For YouTube</div><div class="yt">${yt('Title', c.title, 'title')}${yt('Description', c.desc, 'desc')}${yt('Hashtags', c.tags, 'tags')}${yt('Hook idea', c.hook, 'hook')}</div>` : ''}
@@ -462,6 +514,41 @@ function renderFlyout() {
   host.innerHTML = html;
   host.querySelector('.flyout').dataset.sig = html;
 }
+function recPanel(host, r) {
+  const st = effStatus(r), j = jobFor(r.path);
+  const set = r.clips_dir ? D.sets.find(s => s.path.toLowerCase() === String(r.clips_dir).toLowerCase()) : null;
+  const label = st === 'done' && r.clips != null ? plural(r.clips, 'short') : (STATUS[st] || st);
+  const audio = r.audio === 2 ? '2 tracks (game and mic)' : r.audio === 1 ? '1 track' : r.audio ? `${r.audio} tracks` : 'None';
+  const row = (k, v) => v ? `<dt>${k}</dt><dd title="${esc(String(v).replace(/<[^>]+>/g, ''))}">${v}</dd>` : '';
+  const act = [];
+  if (st === 'done' && set) act.push(`<button class="btn primary" data-action="view-set" data-id="${set.id}">${ic('scissors')}View ${plural(set.clips.length, 'short')}</button>`);
+  if (runnable(r)) act.push(`<button class="btn primary" data-action="make-one" data-p="${esc(r.path)}">${ic(st === 'new' ? 'sparkle' : 'retry')}${st === 'new' ? 'Make highlights' : 'Run again'}</button>`);
+  act.push(`<button class="btn ghost" data-action="reveal" data-p="${esc(r.path)}">${ic('folder')}Show in folder</button>`);
+  if (selectable(r)) act.push(`<button class="btn ghost danger" data-action="del-rec-one" data-id="${r.id}">${ic('trash')}Delete</button>`);
+  const html = `<div class="flyout" role="dialog" aria-label="${esc(r.file)}"><div class="flyhead"><h2 title="${esc(r.file)}">${esc(when(r.recorded))}</h2><button class="iconbtn" data-action="close-detail" aria-label="Close">${ic('x')}</button></div>
+   <div class="flybody">${videoBox(r.path, `${r.game}, ${when(r.recorded)}`)}
+    ${st === 'recording' ? `<div class="warnbox">${ic('warn')}<span>This file is still being recorded. Playback stops where the recording is up to now.</span></div>` : ''}
+    <div><span class="tpill st-${st}">${st === 'processing' ? ic('loader', 'spin') : st === 'done' ? ic('check') : ''}${esc(label)}</span></div>
+    ${st === 'processing' && j ? `<div class="stepname" data-recstep>${recStep(j)}</div>` : ''}
+    ${st === 'failed' && r.reason ? `<div class="report bad">${esc(r.reason)}</div>` : ''}
+    <dl class="facts num big">
+     ${row('File', esc(r.file))}${row('Game', esc(r.game))}${row('Recorded', esc(when(r.recorded)))}${row('Length', dur(r.dur))}${row('Size', size(r.size))}
+     ${row('Video', r.w ? `${r.w}×${r.h}${r.fps ? `, ${r.fps} fps` : ''}` : '')}${row('Audio', audio)}
+     ${row('Processed', r.completed_at ? esc(when(r.completed_at)) : '')}${row('Failed', st === 'failed' && r.failed_at ? esc(when(r.failed_at)) : '')}
+    </dl>
+    <div class="jobacts">${act.join('')}</div>
+    <p class="note" style="margin:0">Tip: tick the box on a card, or Ctrl+click it, to select several recordings.</p></div></div>`;
+  // the live step text updates in place, so a playing video isn't restarted
+  const sig = html.replace(/<div class="stepname" data-recstep>[\s\S]*?<\/div>/, '');
+  const cur = host.querySelector('.flyout');
+  if (cur && cur.dataset.sig === sig) {
+    const s = cur.querySelector('[data-recstep]'); if (s && j) s.innerHTML = recStep(j);
+    return;
+  }
+  host.innerHTML = html;
+  host.querySelector('.flyout').dataset.sig = sig;
+}
+const recStep = j => `<span>Step ${(j.step || 0) + 1} of ${j.steps.length}: ${esc(j.steps[j.step] || '')}. ${esc(j.activity || '')}</span>`;
 function jobCard(j) {
   const steps = j.steps || [], si = Math.min(steps.length - 1, j.step || 0);
   const name = j.kind === 'merge' ? `Merge: ${esc(j.title)}` : esc(j.title);
@@ -487,7 +574,11 @@ function jobCard(j) {
 /* ---------- dialogs and toasts ---------- */
 const dlg = $('#dlg');
 function openDialog(html, cls = '') { dlg.className = cls; dlg.innerHTML = html; if (!dlg.open) dlg.showModal(); }
-function closeDialog() { dlg.querySelectorAll('video,audio').forEach(v => { try { v.pause(); } catch (_) {} }); if (dlg.open) dlg.close(); dlg.innerHTML = ''; }
+function closeDialog() {
+  if (theaterEl && dlg.contains(theaterEl)) exitTheater();
+  dlg.querySelectorAll('video,audio').forEach(v => { try { v.pause(); } catch (_) {} }); if (dlg.open) dlg.close(); dlg.innerHTML = '';
+}
+dlg.addEventListener('cancel', e => { if (theaterEl) { e.preventDefault(); exitTheater(); } });
 dlg.addEventListener('close', () => { dlg.querySelectorAll('video').forEach(v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (_) {} }); });
 let toastT;
 function toast(msg, sub, action) {
@@ -536,7 +627,7 @@ async function doDelete() {
   render();
 }
 function playerDialog(name, path, portrait) {
-  openDialog(`<div class="player ${portrait ? 'portrait' : ''}"><video controls autoplay src="${mediaUrl(path)}"></video>
+  openDialog(`<div class="player ${portrait ? 'portrait' : ''}">${videoBox(path, name, true)}
    <div class="pbar"><b title="${esc(name)}">${esc(name)}</b><button class="btn sm ghost" data-action="reveal" data-p="${esc(path)}">${ic('folder')}Show in folder</button><button class="iconbtn" data-action="dlg-close" aria-label="Close">${ic('x')}</button></div></div>`, 'player' + (portrait ? ' portrait' : ''));
 }
 async function previewDialog() {
@@ -586,6 +677,37 @@ function descDialog(m) {
    <div class="form"><textarea id="descTxt" style="min-height:240px">${esc(txt)}</textarea></div></div>
    <div class="dlg-foot"><button class="btn primary" data-action="copy-desc">${ic('copy')}Copy</button><button class="btn" data-action="dlg-close">Close</button></div>`);
 }
+/* ---------- playbook viewer (read-only; playbooks are changed by asking Claude outside the app) ---------- */
+async function openPlaybooks() {
+  openDialog(`<div class="dlg-body"><h2>Game playbooks</h2><div class="loading">${ic('loader', 'spin')}Loading…</div></div>`, 'pbview');
+  S.pbList = await API().playbooks();
+  if (!S.pbSel || !S.pbList.some(p => p.id === S.pbSel)) S.pbSel = S.pbList[0] && S.pbList[0].id;
+  renderPlaybook();
+}
+function renderPlaybook() {
+  const list = S.pbList || [], pb = list.find(p => p.id === S.pbSel);
+  if (!pb) { openDialog(`<div class="dlg-body"><h2>Game playbooks</h2><p>No playbooks found in the pipeline's games folder.</p></div><div class="dlg-foot"><button class="btn" data-action="dlg-close">Close</button></div>`, 'pbview'); return; }
+  const usedBy = pb.default
+    ? (pb.used_by.length ? `Used for ${pb.used_by.map(esc).join(', ')}, which don't have a playbook of their own yet.` : 'Used for any game folder without its own playbook.')
+    : `Used for recordings in the ${esc(pb.game)} folder.`;
+  openDialog(`<div class="pb">
+    <nav class="pb-list" aria-label="Games">${list.map(p => `<button data-action="pb-pick" data-id="${esc(p.id)}" ${p.id === pb.id ? 'aria-current="true"' : ''}>${ic('book')}<span>${esc(p.game)}</span></button>`).join('')}</nav>
+    <div class="pb-main" id="pbMain">
+      <div class="pb-head"><div><h2>${esc(pb.game)}</h2><p>${usedBy} Last updated ${esc(when(pb.updated))}.</p></div>
+        <div class="pb-acts"><button class="btn sm ghost" data-action="pb-reveal">${ic('folder')}Show file</button><button class="iconbtn" data-action="dlg-close" aria-label="Close">${ic('x')}</button></div></div>
+      <div class="banner pb-note">${ic('book')}<p>These are the rules the highlight maker follows for this game: what counts as a highlight, how clips are cut and scored, and what to skip. The commands it runs are folded away under <b>Show command</b>. To change anything, ask Claude in the terminal, for example: <i>"Update the ${esc(pb.default ? 'default' : pb.game)} playbook so that…"</i></p></div>
+      <div class="pb-toc" id="pbToc"></div>
+      <article class="md">${pb.html}</article>
+    </div></div>`, 'pbview');
+  const md = dlg.querySelector('.md');
+  md.querySelectorAll('pre').forEach(pre => {  // commands for the agent: folded by default
+    const d = document.createElement('details'); d.className = 'cmd';
+    d.innerHTML = '<summary>Show command</summary>'; pre.replaceWith(d); d.appendChild(pre);
+  });
+  const hs = [...md.querySelectorAll('h2')];
+  dlg.querySelector('#pbToc').innerHTML = hs.length > 1 ? hs.map((h, i) => `<button class="chip" data-action="pb-jump" data-i="${i}">${esc(h.textContent)}</button>`).join('') : '';
+}
+
 async function copyText(text, el) {
   try { await navigator.clipboard.writeText(text); toast('Copied'); }
   catch (_) {
@@ -626,7 +748,7 @@ async function pollJobs() {
 /* update the parts that change every second without rebuilding the page (keeps hover and scroll) */
 function softUpdate() {
   renderTop();
-  if (S.jobsOpen) renderFlyout();
+  if (S.jobsOpen || S.detailRec) renderFlyout();
   if (S.page === 'footage') {
     for (const r of D.footage) {
       const j = jobFor(r.path); if (!j || j.state !== 'running') continue;
@@ -653,12 +775,12 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('[data-action]'); if (!t) return;
   const a = t.dataset.action, id = t.dataset.id, kind = t.dataset.kind;
   switch (a) {
-    case 'nav': S.page = t.dataset.page; S.q = ''; S.detail = null; S.jobsOpen = false; $('#toastHost').innerHTML = ''; closeDialog();
+    case 'nav': S.page = t.dataset.page; S.q = ''; S.detail = null; S.detailRec = null; S.jobsOpen = false; $('#toastHost').innerHTML = ''; closeDialog();
       if (S.page === 'shorts' && !S.queueOpen && S.queue.length) S.queueOpen = true;
       if (S.page === 'music' && S.musicTab === 'ncs' && !S.ncsItems) ncsSearch();
       API().settings_set({last_page: S.page}); render(); $('#main').scrollTop = 0; break;
     case 'toggle-queue': S.queueOpen = !S.queueOpen; render(); break;
-    case 'toggle-jobs': S.jobsOpen = !S.jobsOpen; S.detail = null; render(); break;
+    case 'toggle-jobs': S.jobsOpen = !S.jobsOpen; S.detail = null; S.detailRec = null; render(); break;
     case 'show-jobs': S.jobsOpen = true; S.detail = null; $('#toastHost').innerHTML = ''; render(); break;
     case 'clear-jobs': await API().clear_jobs(); await pollJobs(); render(); break;
     case 'view': S.view = t.dataset.view; lsSet('view', S.view); render(); break;
@@ -666,10 +788,28 @@ document.addEventListener('click', async e => {
     case 'collapse': { const g = t.dataset.g; S.collapsed.has(g) ? S.collapsed.delete(g) : S.collapsed.add(g); lsSet('collapsed', [...S.collapsed]); render(); break; }
     case 'check': { e.stopPropagation(); const s = S.sel[kind]; s.has(id) ? s.delete(id) : s.add(id); render(); break; }
     case 'card': { const r = recById.get(id); if (!r) break;
-      if (!selectable(r)) { toast(effStatus(r) === 'recording' ? 'This file is still being recorded' : 'This recording is being processed', 'Wait for it to finish before selecting it.'); break; }
-      const s = S.sel.footage; s.has(id) ? s.delete(id) : s.add(id); render(); break; }
-    case 'open-clip': S.detail = id; S.jobsOpen = false; render(); break;
-    case 'close-detail': S.detail = null; render(); break;
+      if (e.ctrlKey || e.shiftKey || e.metaKey) {  // Ctrl+click selects, like Explorer
+        if (!selectable(r)) { toast(effStatus(r) === 'recording' ? 'This file is still being recorded' : 'This recording is being processed', 'Wait for it to finish before selecting it.'); break; }
+        const s = S.sel.footage; s.has(id) ? s.delete(id) : s.add(id); render(); break;
+      }
+      S.detailRec = id; S.detail = null; S.jobsOpen = false; render(); break; }
+    case 'open-clip':
+      if (e.ctrlKey || e.shiftKey || e.metaKey) { const s = S.sel.shorts; s.has(id) ? s.delete(id) : s.add(id); render(); break; }
+      S.detail = id; S.detailRec = null; S.jobsOpen = false; render(); break;
+    case 'close-detail': S.detail = null; S.detailRec = null; render(); break;
+    case 'view-set': { const set = D.sets.find(s => s.id === id); if (!set) break;
+      S.page = 'shorts'; S.detailRec = null; S.q = ''; S.minScore = 0; S.collapsed.delete('s:' + set.game); S.collapsed.delete('r:' + set.id); lsSet('collapsed', [...S.collapsed]);
+      render(); const el = document.querySelector(`[data-set-id="${set.id}"]`); if (el) el.scrollIntoView({block: 'start'}); break; }
+    case 'make-one': { const n = await API().make_highlights([t.dataset.p]); toast(n ? 'Started a highlight job' : 'Nothing to start', n ? 'Follow it here or under Jobs.' : 'It may already be queued.'); await pollJobs(); render(); break; }
+    case 'del-rec-one': deleteDialog('footage', [recById.get(id)].filter(Boolean)); break;
+    case 'collapse-sets': { const sets = D.sets.filter(s => s.game === t.dataset.g);
+      sets.forEach(s => t.dataset.mode === 'collapse' ? S.collapsed.add('r:' + s.id) : S.collapsed.delete('r:' + s.id)); lsSet('collapsed', [...S.collapsed]); render(); break; }
+    case 'fs-enter': enterTheater(t.closest('.vwrap')); break;
+    case 'fs-exit': exitTheater(); break;
+    case 'playbooks': openPlaybooks(); break;
+    case 'pb-pick': S.pbSel = t.dataset.id; renderPlaybook(); break;
+    case 'pb-jump': { const hs = dlg.querySelectorAll('.md h2'); const h = hs[+t.dataset.i]; if (h) h.scrollIntoView({block: 'start', behavior: 'smooth'}); break; }
+    case 'pb-reveal': { const pb = (S.pbList || []).find(p => p.id === S.pbSel); if (pb) API().reveal_playbook(pb.file); break; }
     case 'sel-group': { const rs = D.footage.filter(r => r.game === t.dataset.g && selectable(r) && (t.dataset.mode === 'all' || runnable(r)));
       const all = rs.length && rs.every(r => S.sel.footage.has(r.id)); rs.forEach(r => all ? S.sel.footage.delete(r.id) : S.sel.footage.add(r.id)); render(); break; }
     case 'sel-set': { const s = D.sets.find(x => x.id === id); if (!s) break; const all = s.clips.every(c => S.sel.shorts.has(c.id)); s.clips.forEach(c => all ? S.sel.shorts.delete(c.id) : S.sel.shorts.add(c.id)); render(); break; }
@@ -752,10 +892,11 @@ document.addEventListener('input', e => {
   if (e.target.id === 'ncsQ') S.ncsQ = e.target.value;
 });
 document.addEventListener('keydown', e => {
+  if (theaterEl && e.key === 'Escape') { e.preventDefault(); exitTheater(); return; }
   if (e.target.id === 'ncsQ' && e.key === 'Enter') { ncsSearch(); return; }
   if (e.target.id === 'linkIn' && e.key === 'Enter') { document.querySelector('[data-action="lookup"]')?.click(); return; }
   if (e.target.matches('input,select,textarea') || dlg.open) return;
-  if (e.key === 'Escape') { if (S.detail || S.jobsOpen) { S.detail = null; S.jobsOpen = false; render(); } }
+  if (e.key === 'Escape') { if (S.detail || S.detailRec || S.jobsOpen) { S.detail = null; S.detailRec = null; S.jobsOpen = false; render(); } }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && (S.page === 'footage' || S.page === 'shorts')) {
     e.preventDefault();
     if (S.page === 'footage') filteredRecs().filter(selectable).forEach(r => S.sel.footage.add(r.id)); else D.sets.forEach(s => s.clips.forEach(c => S.sel.shorts.add(c.id)));
@@ -801,13 +942,17 @@ async function boot() {
   Object.assign(S.merge, S.settings.merge || {});
   S.queue = lsGet('queue', []); S.view = lsGet('view', 'grid'); S.sort = lsGet('sort', 'newest'); S.collapsed = new Set(lsGet('collapsed', []));
   const open = /open=([a-z]+)(?::([a-z]+))?/.exec(location.hash || '');
-  if (open) { S.page = open[1]; if (open[2] === 'queue') S.queueOpen = true; else if (open[2] === 'jobs') S.jobsOpen = true; else if (open[2]) S.musicTab = open[2]; }
+  if (open) { S.page = open[1]; if (open[2] === 'queue') S.queueOpen = true; else if (open[2] === 'jobs') S.jobsOpen = true; else if (open[2] && S.page === 'music') S.musicTab = open[2]; }
   S.queueOpen = S.queueOpen || (S.page === 'shorts' && S.queue.length > 0);
   render();
   await pollJobs();
   await Promise.all([loadFootage().then(render), loadShorts().then(render), loadMerged(), loadMusic()]);
   render();
   if (S.page === 'music' && S.musicTab === 'ncs') ncsSearch();
+  if (open && open[2] === 'playbooks') openPlaybooks();
+  if (open && open[2] === 'detail' && S.page === 'footage') {
+    const r = D.footage.find(x => x.status === 'done') || D.footage[0]; if (r) { S.detailRec = r.id; render(); }
+  }
   setInterval(pollJobs, 1000);
   setInterval(loadDisk, 30000);
   setInterval(async () => {  // pick up new or finished recordings without a manual refresh
