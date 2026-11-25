@@ -249,6 +249,11 @@ class Api:
                "musiconly": ["--music-volume", "-2", "--game-volume", "0", "--no-duck"],
                "balanced": ["--music-level", rel]}.get(o.get("mix", "music"), [])
         args += mix
+        # overall loudness of the finished video. 100% = -14 LUFS (YouTube's reference level),
+        # 50% = half the amplitude = -20 LUFS. YouTube turns loud uploads down but never turns
+        # quiet ones up, so a quieter master also plays quieter there.
+        ovol = max(25, min(100, float(o.get("ovol") or 50)))
+        args += ["--lufs", str(round(-14 + 20 * math.log10(ovol / 100), 1))]
         track = self._pick_music(o.get("music", "any"))
         if track:
             args += ["--music", track]
