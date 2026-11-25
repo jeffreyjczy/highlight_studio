@@ -386,17 +386,15 @@ class Jobs:
                 if j.get("_cancel"):
                     return self._finish(j, "cancelled", error="Cancelled")
                 choice, note = thumbs.fallback(info), f" Claude wasn't available ({e}), so the best-scored frame was used."
-            old = thumbs.info(merged) or {}
-            choice["layout"] = old.get("layout", "hero")
             with self.lock:
                 j["step"], j["activity"] = 2, "Rendering the layouts"
             try:
                 thumbs.render(merged, choice, w)
             except Exception as e:
                 return self._finish(j, "failed", error=f"Couldn't render the thumbnail: {e}")
-        head = choice["headline"].replace("*", "")
         self._finish(j, "done", step=2, out=str(thumbs.paths(merged)["use"]),
-                     report=f"\"{head}\" on frame {choice['pick']}. {choice.get('why', '')}{note}")
+                     report=f"Frame {choice['pick']}, {choice['layout']} style. Title idea: \"{choice.get('title', '')}\". "
+                            f"{choice.get('why', '')}{note}")
 
     # ------------------------------------------------------------ merge
     def _run_merge(self, j):

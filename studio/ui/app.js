@@ -450,7 +450,7 @@ function pageMerged() {
   h += `<div class="mgrid">${D.merged.map(m => {
     const t = trackOfPath(m.music);
     return `<article class="mcard ${m.fmt}">
-    <div class="thumb ${m.fmt === 'short' ? 'portrait' : ''}" data-action="play-merged" data-id="${m.id}"><img loading="lazy" src="${m.thumb && m.fmt === 'long' ? thumbFile(m.thumb.path, m.thumb.v) : thumbUrl(m.path, 0.3, m.fmt === 'short' ? 360 : 640)}" alt=""><span class="dur num">${dur(m.len)}</span></div>
+    <div class="thumb ${m.fmt === 'short' ? 'portrait' : ''}" data-action="play-merged" data-id="${m.id}"><img loading="lazy" src="${m.thumb && !m.thumb.old && m.fmt === 'long' ? thumbFile(m.thumb.path, m.thumb.v) : thumbUrl(m.path, 0.3, m.fmt === 'short' ? 360 : 640)}" alt=""><span class="dur num">${dur(m.len)}</span></div>
     <div class="info"><h3 title="${esc(m.name)}">${esc(m.name)}</h3>
      <dl class="facts num"><dt>Format</dt><dd>${m.fmt === 'short' ? 'Short, 9:16' : 'Long, 16:9'}, ${m.w}×${m.h}</dd><dt>Music</dt><dd title="${esc(m.music || '')}">${t ? esc(trackLabel(t)) : m.music ? esc(base(m.music)) : 'None'}</dd><dt>Made</dt><dd>${esc(when(m.ts))}</dd><dt>Size</dt><dd>${size(m.size)}</dd></dl>
      ${m.clips.length ? `<div class="clipspop"><button class="chip clipsbtn" aria-haspopup="true">${ic('scissors')}Made from ${plural(m.clips.length, 'short')}</button>
@@ -475,18 +475,24 @@ function thumbBtn(m) {
 }
 async function thumbDialog(m) {
   const t = m.thumb; if (!t) return;
+  if (t.old) {  // made with the earlier text styles
+    openDialog(`<div class="dlg-body"><h2>Thumbnail</h2><p>This thumbnail was made with the old text style. Make a new one: Claude picks a frame for the text-free styles and suggests a title.</p></div>
+      <div class="dlg-foot"><button class="btn primary" data-action="thumb-make" data-p="${esc(m.path)}">${ic('sparkle')}Make new thumbnail</button><button class="btn" data-action="dlg-close">Close</button></div>`);
+    return;
+  }
   const cands = t.can_edit ? await API().thumb_candidates(m.path) : [];
   S.thumbFor = m.path; S.thumbPick = t.pick;
-  const lay = (k, label) => `<button class="tlay" data-action="thumb-layout" data-v="${k}" aria-pressed="${t.layout === k}"><img src="${thumbFile(t[k + "_img"], t.v)}" alt=""><span>${label}</span></button>`;
+  const lay = (k, label) => `<button class="tlay" data-action="thumb-layout" data-v="${k}" aria-pressed="${t.layout === k}"><img src="${thumbFile(t[k + '_img'], t.v)}" alt=""><span>${label}</span></button>`;
   openDialog(`<div class="dlg-body"><h2>Thumbnail</h2>
-    <p>${t.by === 'claude' ? 'Claude picked the frame and wrote the text' : t.by === 'you' ? 'Edited by you' : 'Picked by score (Claude wasn\'t available)'}${t.why ? `: ${esc(t.why)}` : '.'} Click a layout to use it. It is 1280×720, ready for YouTube.</p>
-    <div class="tlays">${lay('hero', 'Frame + headline')}${lay('badge', 'Frame + kill badge')}</div>
-    ${t.can_edit ? `<div class="form">
-      <div class="two"><label>Headline <small class="note">*word* is drawn in colour</small><input type="text" id="thHead" maxlength="28" value="${esc(t.headline || '')}"></label>
-      <label>Badge<input type="text" id="thBadge" maxlength="14" value="${esc(t.badge || '')}"></label></div>
-      <label>Frame</label><div class="tframes">${cands.map(c => `<button class="tframe" data-action="thumb-pick" data-n="${c.n}" aria-pressed="${c.n === t.pick}" title="${esc(c.title)}, ${c.time}s"><img loading="lazy" src="${mediaUrl(c.file)}" alt=""><span class="num">${c.n}</span></button>`).join('')}</div>
-    </div>` : ''}</div>
-    <div class="dlg-foot">${t.can_edit ? `<button class="btn primary" data-action="thumb-apply">Apply changes</button>` : ''}<button class="btn" data-action="thumb-make" data-p="${esc(m.path)}" title="A new Claude pick (about USD 0.10 of usage)">${ic('sparkle')}Ask Claude again</button><button class="btn" data-action="dlg-close">Close</button></div>`, 'thumbdlg');
+    <p>${t.by === 'claude' ? 'Claude picked the frame and style' : t.by === 'you' ? 'Edited by you' : 'Picked by score (Claude wasn\'t available)'}${t.why ? `: ${esc(t.why)}` : '.'} Click a style to use it. 1280×720, ready for YouTube.</p>
+    <div class="tlays">${lay('clean', 'Clean')}${lay('mirror', 'Mirror (dual-wield look)')}</div>
+    <div class="form">
+      <label>YouTube title idea <span class="count-hint num" id="thCount"></span><input type="text" id="thTitle" maxlength="100" value="${esc(t.title || '')}"><small class="note">The upload form starts with this title.</small></label>
+      ${t.can_edit ? `<label>Frame</label><div class="tframes">${cands.map(c => `<button class="tframe" data-action="thumb-pick" data-n="${c.n}" aria-pressed="${c.n === t.pick}" title="${esc(c.title)}, ${c.time}s"><img loading="lazy" src="${mediaUrl(c.file)}" alt=""><span class="num">${c.n}</span></button>`).join('')}</div>` : ''}
+    </div></div>
+    <div class="dlg-foot"><button class="btn primary" data-action="thumb-apply">Apply changes</button><button class="btn" data-action="thumb-make" data-p="${esc(m.path)}" title="A new Claude pick (about USD 0.10 of usage)">${ic('sparkle')}Ask Claude again</button><button class="btn" data-action="dlg-close">Close</button></div>`, 'thumbdlg');
+  const upd = () => { $('#thCount').textContent = `${$('#thTitle').value.length}/100`; };
+  $('#thTitle').addEventListener('input', upd); upd();
 }
 async function reopenThumb(path) { await loadMerged(); render(); const m = D.merged.find(x => x.path === path); if (m && m.thumb) thumbDialog(m); }
 
@@ -876,7 +882,7 @@ function uploadDialog(m) {
     ${prev ? `<div class="warnbox">${ic('warn')}<span>This video was already uploaded on ${esc(when(prev.uploaded_at))} (<a href="#" data-action="open-url" data-url="${esc(prev.studio)}">open in Studio</a>). Uploading again makes a second copy.</span></div>` : ''}
     ${warn ? `<div class="warnbox">${ic('warn')}<span>${esc(warn)}</span></div>` : ''}
     <div class="form">
-     <label>Title <span class="count-hint num" id="tCount"></span><input type="text" id="yTitle" maxlength="100" value="${esc(m.name)}"></label>
+     <label>Title <span class="count-hint num" id="tCount"></span><input type="text" id="yTitle" maxlength="100" value="${esc((m.thumb && !m.thumb.old && m.thumb.title) || m.name)}"></label>
      <label>Description <span class="count-hint num" id="dCount"></span><textarea id="yDesc" maxlength="5000" style="min-height:170px">${esc(txt)}</textarea></label>
      <label>Tags (comma separated)<input type="text" id="yTags" value="${esc(tags)}"></label>
      <div class="two"><label>Visibility<select id="yPriv"><option value="private" selected>Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option><option value="scheduled">Scheduled</option></select></label>
@@ -1097,7 +1103,10 @@ document.addEventListener('click', async e => {
     case 'thumb-pick': S.thumbPick = +t.dataset.n; document.querySelectorAll('.tframe').forEach(b => b.setAttribute('aria-pressed', b === t)); break;
     case 'thumb-apply': {
       t.disabled = true;
-      const r = await API().thumb_edit(S.thumbFor, {pick: S.thumbPick, headline: $('#thHead').value, badge: $('#thBadge').value});
+      const m0 = D.merged.find(x => x.path === S.thumbFor), t0 = m0 && m0.thumb;
+      const change = {title: $('#thTitle').value};
+      if (t0 && S.thumbPick !== t0.pick) change.pick = S.thumbPick;
+      const r = await API().thumb_edit(S.thumbFor, change);
       if (!r.ok) { t.disabled = false; toast("Couldn't render", r.error); break; }
       await reopenThumb(S.thumbFor); break; }
     case 'upload-yt': { const m = D.merged.find(x => x.id === id); if (!m) break; t.disabled = true; await refreshYt();

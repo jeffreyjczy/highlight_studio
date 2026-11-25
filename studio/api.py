@@ -235,7 +235,11 @@ class Api:
         if not is_inside(p, [merged_root()]):
             return {"ok": False, "error": "Not a merged video."}
         old = thumbs.info(p) or {}
-        new = {**{k: old.get(k) for k in ("pick", "headline", "badge", "layout", "why")}, **(choice or {}), "by": "you"}
+        choice = choice or {}
+        if set(choice) <= {"title"} and not old.get("old"):  # only the title changed: no re-render
+            thumbs.set_title(p, choice.get("title", ""))
+            return {"ok": True}
+        new = {**{k: old.get(k) for k in ("pick", "layout", "title", "why")}, **choice, "by": "you"}
         try:
             thumbs.render(p, new)
         except Exception as e:
@@ -331,9 +335,10 @@ class Api:
                 if ok and p.with_suffix(side).exists():
                     ledger.recycle(p.with_suffix(side))
                 if ok and kind == "merged":  # its thumbnail files go with it
-                    for ext in (".thumb.jpg", ".thumb-hero.jpg", ".thumb-badge.jpg", ".thumb.json"):
-                        if p.with_suffix(ext).exists():
-                            ledger.recycle(p.with_suffix(ext))
+                    import thumbs
+                    for f in thumbs.files(p):
+                        if f.exists():
+                            ledger.recycle(f)
                 results.append({"path": str(p), "ok": ok, "reason": "" if ok else "Windows did not move it",
                                 "size": size})
         elif kind == "music":

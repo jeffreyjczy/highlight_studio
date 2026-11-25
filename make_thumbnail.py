@@ -1,13 +1,15 @@
 """YouTube thumbnail for a merged video, built from real frames of the clips it uses.
 
   python make_thumbnail.py candidates <merged.mp4> <workdir>
-      Grabs frames just after each kill/action in the source clips (full resolution, 16:9),
+      Grabs frames just before each kill/action in the source clips (the shot; no kill banner or skull yet),
       scores them (sharpness, exposure, colour), keeps the best 12 and writes
       <workdir>/candidates.json and <workdir>/sheet.jpg (numbered contact sheet for review).
 
   python make_thumbnail.py render <workdir> --pick N [--headline TEXT] [--badge TEXT]
                                   [--layout hero|badge] --out <file.jpg>
       Renders a 1280x720 JPEG (under 2 MB, YouTube's limit) from candidate N.
+        clean  one frame, HUD cropped away, punchy colour, glow, zoom blur (no text)
+        mirror the weapon side mirrored onto the left: a dual-wield look (no text)
         hero   one graded frame and a big outlined headline
         badge  the same frame with a large kill badge ("QUADRA KILL") and a smaller headline
 
@@ -84,7 +86,7 @@ def candidates(merged, work):
         if not src.exists():
             continue
         acts = [t for t in c.get("actions", []) if c["in"] <= t <= c["out"]]
-        times = [(t + d, k) for k, t in enumerate(acts) for d in (0.12, 0.45)] or \
+        times = [(t + d, k) for k, t in enumerate(acts) for d in (-0.45, -0.25, -0.08)] or \
                 [(c["in"] + (c["out"] - c["in"]) * f, None) for f in (0.3, 0.5, 0.7)]
         jobs += [(ci, src, t, k, len(acts)) for t, k in times]
 
@@ -209,12 +211,65 @@ def badge(base, text, acc):
     base.alpha_composite(b, (x, y))
 
 
+# ---------------------------------------------------------------- text-free styles
+# HUD-free crop boxes (fractions of the source frame). FPS HUDs sit at the edges: minimap top-left,
+# kill feed top-right, health/abilities bottom-centre, ammo bottom-right. The weapon is lower right.
+CLEAN_BOX = (0.23, 0.15, 0.95, 0.87)      # 72% of the frame, right (weapon), below the banner, above notices
+MIRROR_BOX = (0.50, 0.16, 0.85, 0.86)     # right half of a 70% crop, below the top banner: mirrored
+
+
+def stylise(img, strength=1.0):
+    """Punchy colour, bloom on the highlights, zoom blur towards the edges (centre stays sharp)."""
+    img = ImageEnhance.Color(img).enhance(1.0 + 0.45 * strength)
+    img = ImageEnhance.Contrast(img).enhance(1.0 + 0.14 * strength)
+    img = ImageEnhance.Sharpness(img).enhance(1.4)
+    # bloom: blurred bright parts, screen-blended back
+    bright = img.point(lambda v: max(0, v - 150) * 2.4).filter(ImageFilter.GaussianBlur(22))
+    a, b = np.asarray(img, dtype=np.float32), np.asarray(bright, dtype=np.float32)
+    img = Image.fromarray(np.clip(255 - (255 - a) * (255 - b * 0.55 * strength) / 255, 0, 255).astype(np.uint8))
+    # zoom blur: average of slightly scaled copies, masked so only the edges smear (speed feel)
+    acc_ = np.zeros((H, W, 3), dtype=np.float32)
+    steps = 8
+    for i in range(steps):
+        s = 1.0 + 0.075 * i / (steps - 1)
+        z = img.resize((int(W * s), int(H * s)), Image.BILINEAR)
+        x0, y0 = (z.width - W) // 2, (z.height - H) // 2
+        acc_ += np.asarray(z.crop((x0, y0, x0 + W, y0 + H)), dtype=np.float32)
+    zoom = Image.fromarray((acc_ / steps).astype(np.uint8))
+    mask = Image.new("L", (W, H), 255)
+    ImageDraw.Draw(mask).ellipse([W * 0.14, H * 0.10, W * 0.86, H * 0.98], fill=0)
+    mask = mask.filter(ImageFilter.GaussianBlur(110))
+    img = Image.composite(zoom, img, mask)
+    # soft vignette
+    v = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(v).ellipse([-W * 0.2, -H * 0.3, W * 1.2, H * 1.3], fill=255)
+    v = v.filter(ImageFilter.GaussianBlur(140))
+    return Image.composite(img, ImageEnhance.Brightness(img).enhance(0.6), v)
+
+
+def crop_box(frame, box):
+    fw, fh = frame.size
+    return frame.crop((int(box[0] * fw), int(box[1] * fh), int(box[2] * fw), int(box[3] * fh)))
+
+
+def styled(frame, layout):
+    if layout == "mirror":
+        half = crop_box(frame, MIRROR_BOX).resize((W // 2, H), Image.LANCZOS)
+        img = Image.new("RGB", (W, H))
+        img.paste(ImageOps.mirror(half), (0, 0))
+        img.paste(half, (W // 2, 0))  # the seam is the frame's own centre line, so it is continuous
+        return stylise(img)
+    return stylise(crop_box(frame, CLEAN_BOX).resize((W, H), Image.LANCZOS))
+
+
 def render(work, pick, headline, badge_text, layout, out):
     info = json.loads((work / "candidates.json").read_text(encoding="utf-8"))
     c = next((x for x in info["candidates"] if x["n"] == pick), info["candidates"][0])
     acc = accent_for(c["game"])
     with Image.open(c["file"]) as im:
         frame = im.convert("RGB")
+    if layout in ("clean", "mirror"):
+        return save_jpg(styled(frame, layout), out)
     # slight zoom on the centre (the crosshair is where the action is)
     frame = ImageOps.fit(frame, (int(W * 1.08), int(H * 1.08)), centering=(0.5, 0.48)).crop(
         (int(W * 0.04), int(H * 0.04), int(W * 0.04) + W, int(H * 0.04) + H))
@@ -230,7 +285,10 @@ def render(work, pick, headline, badge_text, layout, out):
         headline_block(base, headline, acc, W - 96, 110, H - 48)
     else:
         headline_block(base, headline, acc, W - 96, 170, H - 52)
-    img = base.convert("RGB")
+    return save_jpg(base.convert("RGB"), out)
+
+
+def save_jpg(img, out):
     out = Path(out)
     for q in (92, 85, 75, 65):  # YouTube's limit is 2 MB
         img.save(out, quality=q, optimize=True)
@@ -250,7 +308,7 @@ def main():
     r.add_argument("--pick", type=int, default=1)
     r.add_argument("--headline", default="")
     r.add_argument("--badge", default="")
-    r.add_argument("--layout", choices=["hero", "badge"], default="hero")
+    r.add_argument("--layout", choices=["clean", "mirror", "hero", "badge"], default="clean")
     r.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.cmd == "candidates":

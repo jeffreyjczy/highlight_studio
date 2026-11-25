@@ -225,7 +225,7 @@ def _thumb_info(f):
     if not meta:
         return None
     p = thumbs.paths(f)
-    meta.update(path=str(p["use"]), hero_img=str(p["hero"]), badge_img=str(p["badge"]),
+    meta.update(path=str(p["use"]), clean_img=str(p["clean"]), mirror_img=str(p["mirror"]),
                 v=int(p["use"].stat().st_mtime), work=str(p["work"]))
     return meta
 
