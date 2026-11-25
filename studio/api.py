@@ -227,7 +227,8 @@ class Api:
         if o.get("hq"):
             args.append("--hq")
         # sound mix presets (merge_highlights.py defaults = "balanced": game first, music ducks under it)
-        mix = {"music": ["--music-volume", "-4", "--game-volume", "0.45", "--no-duck"],
+        # "music": music and gameplay about equally loud (measured: music ~1 dB under the game)
+        mix = {"music": ["--music-volume", "-8", "--game-volume", "0.7", "--no-duck"],
                "musiconly": ["--music-volume", "-2", "--game-volume", "0", "--no-duck"],
                "balanced": []}.get(o.get("mix", "music"), [])
         args += mix
