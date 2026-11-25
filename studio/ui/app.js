@@ -57,7 +57,7 @@ const DEMO_JOBS = [
 const D = {footage: [], sets: [], merged: [], tracks: [], jobs: [], watch: {waiting: [], ytal: false}, disk: null, claude: {}, roots: {}, loaded: {}};
 const S = {page: 'footage', view: 'grid', q: '', status: 'all', sort: 'newest', minScore: 0,
   sel: {footage: new Set(), shorts: new Set(), music: new Set()}, queue: [], queueOpen: false, jobsOpen: false,
-  detail: null, collapsed: new Set(), merge: {fmt: 'short', hq: true, style: 'punchy', music: 'any', mix: 'music', name: ''},
+  detail: null, collapsed: new Set(), merge: {fmt: 'short', hq: true, style: 'punchy', music: 'any', mix: 'music', mvol: 50, name: ''},
   musicTab: 'library', ncsQ: '', ncsItems: null, ncsLoading: false, ncsError: '', genre: 'all', playing: null,
   lookup: null, lookupBusy: false, link: '', settings: {}, musicVol: 0.5, playingInfo: null};
 let clipById = new Map(), clipByPath = new Map(), recById = new Map(), setOfClip = new Map();
@@ -341,7 +341,8 @@ function renderQueue() {
    <div class="field"><label>Format</label><div class="seg" role="group"><button data-action="fmt" data-v="short" aria-pressed="${S.merge.fmt === 'short'}">Short 9:16</button><button data-action="fmt" data-v="long" aria-pressed="${S.merge.fmt === 'long'}">Long 16:9</button></div></div>
    <div class="field"><label for="musicSel">Music</label><select class="select" id="musicSel"><option value="any" ${S.merge.music === 'any' ? 'selected' : ''}>Shuffle tracks that have a credit${usable.length ? '' : ' (none yet)'}</option>${D.tracks.map(t => `<option value="${esc(t.path)}" ${t.credit_state === 'missing' ? 'disabled' : ''} ${S.merge.music === t.path ? 'selected' : ''}>${esc(trackLabel(t))}${t.credit_state === 'missing' ? ' (add a credit first)' : ''}</option>`).join('')}</select></div>
    <div class="field"><label for="styleSel">Style</label><select class="select" id="styleSel"><option value="punchy" ${S.merge.style === 'punchy' ? 'selected' : ''}>Punchy: zoom and flash on kills</option><option value="clean" ${S.merge.style === 'clean' ? 'selected' : ''}>Clean: plain crossfades</option></select></div>
-   <div class="field"><label for="mixSel">Sound</label><select class="select" id="mixSel">${[['music', 'Music first: music and game equally loud'], ['balanced', 'Game first: music dips on shots'], ['musiconly', 'Music only: no game sound']].map(([v, l]) => `<option value="${v}" ${S.merge.mix === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+   <div class="field"><label for="mixSel">Sound</label><select class="select" id="mixSel">${[['music', 'Steady: music plays under the game'], ['balanced', 'Game first: music also dips on shots'], ['musiconly', 'Music only: no game sound']].map(([v, l]) => `<option value="${v}" ${S.merge.mix === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+   ${S.merge.mix === 'musiconly' ? '' : `<div class="field"><label for="mvol">Music volume</label><span class="np-vol mvol" title="Compared with the gameplay, measured per video. 100% = as loud as the game, 50% = half as loud."><input type="range" id="mvol" min="10" max="150" step="5" value="${S.merge.mvol ?? 50}" aria-label="Music volume compared with the game"><span class="num" id="mvolTxt">${S.merge.mvol ?? 50}%</span><span class="note">of game</span></span></div>`}
    <div class="field"><label>1440p</label><span style="display:flex;align-items:center;gap:8px"><button class="switch" data-action="hq" role="switch" aria-checked="${S.merge.hq}" aria-label="1440p output"></button><span class="note">${S.merge.hq ? 'Higher quality on YouTube' : '1080p'}</span></span></div>
   </div>
   <div class="qactions"><button class="btn" data-action="preview" ${items.length < 2 ? 'disabled' : ''}>${ic('eye')}Preview cuts</button><button class="btn primary" data-action="merge" ${items.length < 2 ? 'disabled' : ''} title="${items.length < 2 ? 'Add at least 2 shorts' : ''}">${ic('stack')}Merge</button></div>`;
@@ -372,7 +373,7 @@ window.addEventListener('resize', () => {
     if (S[key] && S[key] > qMax()) { S[key] = qMax(); const q = document.getElementById(id); if (q) q.style.width = S[key] + 'px'; }
   }
 });
-function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix}}); }
+function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix, mvol: S.merge.mvol ?? 50}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
   list.querySelectorAll('.qitem').forEach(li => {
@@ -384,7 +385,7 @@ function bindDrag() {
   });
 }
 function mergeOpts(musicOverride) {
-  return {clips: S.queue, name: S.merge.name || defaultName(), fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, mix: S.merge.mix || 'music', music: musicOverride || S.merge.music};
+  return {clips: S.queue, name: S.merge.name || defaultName(), fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, mix: S.merge.mix || 'music', mvol: S.merge.mvol ?? 50, music: musicOverride || S.merge.music};
 }
 function defaultName() {
   const games = [...new Set(S.queue.map(clipOfPath).filter(Boolean).map(c => c.game))];
@@ -1083,6 +1084,7 @@ document.addEventListener('dblclick', e => {
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }
   if (e.target.id === 'outName') S.merge.name = e.target.value;
+  if (e.target.id === 'mvol') { S.merge.mvol = +e.target.value; $('#mvolTxt').textContent = e.target.value + '%'; }
   if (e.target.id === 'linkIn') S.link = e.target.value;
   if (e.target.id === 'ncsQ') S.ncsQ = e.target.value;
 });
@@ -1111,7 +1113,8 @@ document.addEventListener('change', e => {
   if (id === 'minScore') { S.minScore = +e.target.value; render(); }
   if (id === 'styleSel') { S.merge.style = e.target.value; saveMergeOpts(); }
   if (id === 'musicSel') { S.merge.music = e.target.value; saveMergeOpts(); }
-  if (id === 'mixSel') { S.merge.mix = e.target.value; saveMergeOpts(); }
+  if (id === 'mixSel') { S.merge.mix = e.target.value; saveMergeOpts(); renderQueue(); }
+  if (id === 'mvol') saveMergeOpts();
   if (id === 'genreSel') { S.genre = e.target.value; render(); }
   if (id === 'setModel') { S.settings.valorant_model = e.target.value; API().settings_set({valorant_model: e.target.value}); }
   if (id === 'setJobs') { S.settings.jobs_at_once = +e.target.value; API().settings_set({jobs_at_once: +e.target.value}); }

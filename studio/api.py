@@ -226,11 +226,15 @@ class Api:
                 "--style", o.get("style", "punchy")]
         if o.get("hq"):
             args.append("--hq")
-        # sound mix presets (merge_highlights.py defaults = "balanced": game first, music ducks under it)
-        # "music": music and gameplay about equally loud (measured: music ~1 dB under the game)
-        mix = {"music": ["--music-volume", "-8", "--game-volume", "0.7", "--no-duck"],
+        # sound mix presets. The music level is set relative to the gameplay's measured
+        # loudness (merge_highlights.py --music-level), because NCS tracks are mastered very
+        # differently (one measured -3.6 LUFS vs ~-13 for clips). mvol 100% = as loud as
+        # the game, 50% = half the amplitude (-6 dB).
+        import math
+        rel = str(round(20 * math.log10(max(5, min(200, float(o.get("mvol") or 50))) / 100), 1))
+        mix = {"music": ["--music-level", rel, "--game-volume", "1.0", "--no-duck"],
                "musiconly": ["--music-volume", "-2", "--game-volume", "0", "--no-duck"],
-               "balanced": []}.get(o.get("mix", "music"), [])
+               "balanced": ["--music-level", rel]}.get(o.get("mix", "music"), [])
         args += mix
         track = self._pick_music(o.get("music", "any"))
         if track:

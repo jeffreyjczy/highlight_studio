@@ -41,6 +41,8 @@ Options:
   --lead S / --tail S   seconds kept before the first / after the last action (3.0 / 1.8)
   --max-length S        drop the lowest-scored clips until the video fits (e.g. 180 for Shorts)
   --music-volume DB     music level before ducking (default -12)
+  --music-level DB      music loudness relative to the measured gameplay loudness, e.g. -6
+                        (half as loud); overrides --music-volume. Tracks differ a lot in mastering.
   --game-volume X       gameplay audio gain (default 1.0; 0 = music only)
   --lufs N              loudness target (default -14)
   --dry-run             print the edit plan without rendering
@@ -491,6 +493,21 @@ def build_graph(items, a, music_idx, music_info, total):
     return ";".join(f), moments
 
 
+def loudness(path, start=None, dur=None):
+    """Integrated loudness (LUFS) of a file's audio, or of start..start+dur."""
+    cmd = [FFMPEG, "-hide_banner", "-nostats"]
+    if start is not None:
+        cmd += ["-ss", f"{start:.3f}", "-t", f"{dur:.3f}"]
+    cmd += ["-i", str(path), "-vn", "-af", "ebur128", "-f", "null", "-"]
+    err = subprocess.run(cmd, capture_output=True, text=True, errors="replace").stderr
+    vals = [ln.split("I:")[1].split("LUFS")[0] for ln in err.splitlines() if ln.strip().startswith("I:")]
+    try:
+        v = float(vals[-1])
+    except (IndexError, ValueError):
+        return None
+    return v if v > -70 else None
+
+
 def free_name(out):
     out, n = Path(out), 2
     cand = out
@@ -526,6 +543,8 @@ def main():
     ap.add_argument("--max-length", type=float)
     ap.add_argument("--music-volume", type=float, default=-12.0)
     ap.add_argument("--game-volume", type=float, default=1.0)
+    ap.add_argument("--music-level", type=float,
+                    help="music loudness relative to the gameplay in dB (measured; overrides --music-volume)")
     ap.add_argument("--lufs", type=float, default=-14.0)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--plan-json", help="with --dry-run: also write the edit plan as JSON to this file")
@@ -615,6 +634,20 @@ def main():
     if music:
         midx = len(items)
         cmd += ["-i", str(music)]
+    if music and a.music_level is not None:
+        # set the music relative to how loud the gameplay actually is, so a loudly
+        # mastered track doesn't drown the game (tracks differ by 10 dB or more)
+        ml = loudness(music)
+        parts = [(loudness(it["file"], it["in"], it["length"]), it["length"]) for it in items if it["has_audio"]]
+        parts = [(l, d) for l, d in parts if l is not None]
+        if ml is not None and parts and a.game_volume > 0:
+            energy = sum(10 ** (l / 10) * d for l, d in parts) / sum(d for _, d in parts)
+            gl = 10 * np.log10(energy) + 20 * np.log10(a.game_volume)
+            a.music_volume = round(gl + a.music_level - ml, 1)
+            print(f"  loudness: game {gl:.1f} LUFS, music {ml:.1f} LUFS -> music gain {a.music_volume:+.1f} dB "
+                  f"(music {a.music_level:+.1f} dB vs game)")
+        elif ml is not None:
+            a.music_volume = round(a.lufs - ml, 1)
     fc, moments = build_graph(items, a, midx, minfo, total)
     out = free_name(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
