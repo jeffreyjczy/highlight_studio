@@ -411,6 +411,14 @@ window.addEventListener('resize', () => {
 function volSum() { const el = $('#volSum'); if (el) el.textContent = `${S.merge.mix === 'musiconly' ? '' : `Music ${S.merge.mvol ?? 50}% · `}Video ${S.merge.ovol ?? 50}%`; }
 // the Volume section remembers whether it is open (the queue is rebuilt often); 'toggle' doesn't bubble
 document.addEventListener('toggle', e => { if (e.target.id === 'volAcc') { S.volOpen = e.target.open; lsSet('volOpen', S.volOpen); } }, true);
+// "Name" -> "Name v2", "Name v2" -> "Name v3", "Name v2 v2 v2" -> "Name v3"; skips versions that already exist
+function nextVersion(name) {
+  const tail = name.match(/(\s+v\d+)+$/i), base = tail ? name.slice(0, tail.index) : name;
+  let n = Math.max(1, ...((tail ? tail[0] : '').match(/\d+/g) || []).map(Number)) + 1;
+  const taken = new Set((D.merged || []).map(x => x.name.toLowerCase()));
+  while (taken.has(`${base} v${n}`.toLowerCase())) n++;
+  return `${base} v${n}`;
+}
 function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix, mvol: S.merge.mvol ?? 50, ovol: S.merge.ovol ?? 50}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
@@ -1084,7 +1092,7 @@ document.addEventListener('click', async e => {
     case 'merge': doMerge(); break;
     case 'merge-preview': doMerge(S.previewMusic); break;
     case 'remerge': { const m = D.merged.find(x => x.id === id); const ok = m.clips.filter(p => clipOfPath(p));
-      S.queue = ok; S.merge.fmt = m.fmt; S.merge.name = m.name + ' v2'; saveQueue(); S.page = 'shorts'; S.queueOpen = true; render();
+      S.queue = ok; S.merge.fmt = m.fmt; S.merge.name = nextVersion(m.name); saveQueue(); S.page = 'shorts'; S.queueOpen = true; render();
       toast(`Loaded ${plural(ok.length, 'short')} from "${m.name}" into the queue`, ok.length < m.clips.length ? `${m.clips.length - ok.length} no longer exist.` : 'Change the order or settings, then merge.'); break; }
     case 'play-merged': { const m = D.merged.find(x => x.id === id); if (m) playerDialog(m.name, m.path, m.fmt === 'short'); break; }
     case 'reveal': API().reveal(t.dataset.p); break;
