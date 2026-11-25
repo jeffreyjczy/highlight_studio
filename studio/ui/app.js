@@ -140,6 +140,11 @@ document.addEventListener('fullscreenchange', () => {  // fallback if the browse
   if (fe && fe.tagName === 'VIDEO') { document.exitFullscreen().catch(() => {}); enterTheater(fe.closest('.vwrap')); }
 });
 document.addEventListener('mousemove', () => { if (theaterEl) wakeTheater(); }, true);
+// every video starts at 50% volume (media events don't bubble, so listen in the capture phase)
+document.addEventListener('loadstart', e => {
+  const v = e.target;
+  if (v.tagName === 'VIDEO' && !v.dataset.vol) { v.volume = 0.5; v.dataset.vol = '1'; }
+}, true);
 
 /* ---------- shell ---------- */
 function renderTop() {
