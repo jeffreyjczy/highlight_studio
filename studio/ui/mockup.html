@@ -1,0 +1,1011 @@
+<title>Highlight Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a Windows 11 app window: title bar with live status, left navigation pane, scrolling content, docked merge queue on the right, flyouts and dialogs above. */
+:root{
+  --desk:#dfe3e8; --bg:#f3f3f3; --surface:#fafafa; --card:#ffffff; --card-hover:#f6f6f6;
+  --stroke:#e3e3e3; --stroke-strong:#cfcfcf; --fg:#1b1b1b; --fg2:#5d5d5d; --fg3:#8b8b8b;
+  --accent:#005fb8; --accent-hover:#0b6cc7; --accent-fg:#ffffff; --accent-soft:#e1edf8;
+  --ok:#0f7b0f; --ok-soft:#dff6dd; --warn:#8a5300; --warn-soft:#fff4ce; --bad:#c42b1c; --bad-soft:#fde7e9;
+  --muted-soft:#ececec; --scrim:rgba(0,0,0,.32); --shadow:rgba(0,0,0,.14); --hover:rgba(0,0,0,.045);
+  --g-valorant:#e0435a; --g-abi:#c99a2e; --g-gzw:#3f9a62; --g-wardogs:#7a6bd1; --g-desktop:#6b7a8f;
+  --font:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  --font-display:"Segoe UI Variable Display","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
+  --r-sm:4px; --r-md:8px; --r-lg:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --desk:#101214; --bg:#202020; --surface:#272727; --card:#2d2d2d; --card-hover:#323232;
+  --stroke:#3a3a3a; --stroke-strong:#4a4a4a; --fg:#ffffff; --fg2:#c8c8c8; --fg3:#9a9a9a;
+  --accent:#60cdff; --accent-hover:#7dd6ff; --accent-fg:#002235; --accent-soft:#17344a;
+  --ok:#6ccb5f; --ok-soft:#1f3a1e; --warn:#fce100; --warn-soft:#3d3416; --bad:#ff99a4; --bad-soft:#442726;
+  --muted-soft:#383838; --scrim:rgba(0,0,0,.55); --shadow:rgba(0,0,0,.5); --hover:rgba(255,255,255,.06);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --desk:#101214; --bg:#202020; --surface:#272727; --card:#2d2d2d; --card-hover:#323232;
+  --stroke:#3a3a3a; --stroke-strong:#4a4a4a; --fg:#ffffff; --fg2:#c8c8c8; --fg3:#9a9a9a;
+  --accent:#60cdff; --accent-hover:#7dd6ff; --accent-fg:#002235; --accent-soft:#17344a;
+  --ok:#6ccb5f; --ok-soft:#1f3a1e; --warn:#fce100; --warn-soft:#3d3416; --bad:#ff99a4; --bad-soft:#442726;
+  --muted-soft:#383838; --scrim:rgba(0,0,0,.55); --shadow:rgba(0,0,0,.5); --hover:rgba(255,255,255,.06);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--desk);color:var(--fg);font:14px/20px var(--font);
+  padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:var(--r-sm)}
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+
+/* window */
+.window{height:100%;min-height:620px;max-width:1500px;margin:0 auto;background:var(--bg);border:1px solid var(--stroke-strong);
+  border-radius:var(--r-md);overflow:hidden;display:grid;grid-template-rows:44px 1fr;box-shadow:0 16px 48px var(--shadow);position:relative}
+.titlebar{display:flex;align-items:center;gap:12px;padding-left:14px;background:var(--bg);min-width:0}
+.appmark{width:18px;height:18px;border-radius:5px;background:var(--accent);display:grid;place-items:center;color:var(--accent-fg);flex:none}
+.appmark svg{width:12px;height:12px}
+.apptitle{font-size:12px;color:var(--fg2);white-space:nowrap}
+.tb-spacer{flex:1}
+.disk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg2);white-space:nowrap}
+.disk .bar{width:90px;height:4px;border-radius:2px;background:var(--muted-soft);overflow:hidden}
+.disk .bar i{display:block;height:100%;background:var(--fg2)}
+.tb-btn{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;font-size:13px;white-space:nowrap}
+.tb-btn:hover{background:var(--hover)}
+.tb-btn[aria-pressed="true"]{background:var(--card);border-color:var(--stroke)}
+.count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:11px;line-height:18px;text-align:center;font-weight:600}
+.count.zero{background:var(--muted-soft);color:var(--fg2)}
+.spin{animation:spin 1.1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.caption{display:flex;height:100%}
+.caption span{width:46px;display:grid;place-items:center;font-size:11px;color:var(--fg2)}
+
+.body{display:grid;grid-template-columns:200px minmax(0,1fr) auto;min-height:0;border-top:1px solid var(--stroke)}
+/* nav */
+.nav{display:flex;flex-direction:column;gap:2px;padding:8px 6px;background:var(--bg);border-right:1px solid var(--stroke)}
+.nav button{display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border:0;border-radius:var(--r-sm);background:transparent;text-align:left;position:relative;font-size:14px}
+.nav button:hover{background:var(--hover)}
+.nav button[aria-current="page"]{background:var(--card);box-shadow:0 0 0 1px var(--stroke)}
+.nav button[aria-current="page"]::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:3px;border-radius:2px;background:var(--accent)}
+.nav .ic{width:18px;height:18px}
+.nav .badge{margin-left:auto;font-size:12px;color:var(--fg3)}
+.nav .grow{flex:1}
+
+/* main */
+main{overflow:auto;min-width:0;background:var(--surface);position:relative;display:flex;flex-direction:column}
+.page{padding:20px 28px 96px;flex:1}
+.pagehead{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.pagehead h1{font:600 28px/36px var(--font-display);margin:0;letter-spacing:-.01em}
+.pagehead .sub{color:var(--fg2);font-size:13px;margin-bottom:5px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.search{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--card);border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm);min-width:0;width:240px;max-width:100%}
+.search input{border:0;outline:0;background:transparent;width:100%;min-width:0}
+.search .ic{color:var(--fg3)}
+.select{height:32px;padding:0 8px;background:var(--card);border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm)}
+.seg{display:inline-flex;border:1px solid var(--stroke);border-radius:var(--r-sm);background:var(--card);overflow:hidden}
+.seg button{height:30px;padding:0 10px;border:0;background:transparent;display:flex;align-items:center;gap:6px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg)}
+.toolbar .grow{flex:1}
+
+/* groups */
+.group{margin-bottom:22px}
+.ghead{display:flex;align-items:center;gap:10px;padding:6px 0 10px;flex-wrap:wrap}
+.ghead .toggle{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:4px 6px 4px 2px;border-radius:var(--r-sm);font:600 16px/22px var(--font-display)}
+.ghead .toggle:hover{background:var(--hover)}
+.ghead .toggle .ic{transition:transform .15s;color:var(--fg2)}
+.group:not(.collapsed) .ghead .toggle .ic{transform:rotate(90deg)}
+.gdot{width:8px;height:8px;border-radius:50%;flex:none}
+.gmeta{color:var(--fg3);font-size:13px}
+.ghead .grow{flex:1}
+.linkbtn{border:0;background:transparent;color:var(--accent);font-size:13px;padding:4px 6px;border-radius:var(--r-sm)}
+.linkbtn:hover{background:var(--hover)}
+.group.collapsed .gbody{display:none}
+.sub-ghead{display:flex;align-items:center;gap:8px;margin:4px 0 10px 4px;color:var(--fg2);font-size:13px}
+.sub-ghead strong{color:var(--fg);font-weight:600}
+
+/* cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:14px}
+.grid.small{grid-template-columns:repeat(auto-fill,minmax(196px,1fr))}
+.card{position:relative;border-radius:var(--r-md);padding:6px 6px 10px;border:1px solid transparent;background:transparent;text-align:left;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card:hover{background:var(--card-hover);border-color:var(--stroke)}
+.card.selected{background:var(--accent-soft);border-color:var(--accent)}
+.card.disabled .thumb{opacity:.6}
+.thumb{position:relative;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:var(--muted-soft);max-width:100%}
+.thumb.portrait{aspect-ratio:9/16}
+.thumb svg.scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+.thumb .pan{transition:transform .08s linear}
+.thumb .scrub{position:absolute;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);opacity:0;pointer-events:none}
+.thumb:hover .scrub{opacity:1}
+.thumb .scrubtime{position:absolute;top:6px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:11px;padding:1px 6px;border-radius:3px;opacity:0;pointer-events:none}
+.thumb:hover .scrubtime{opacity:1}
+.dur{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;line-height:16px;padding:1px 6px;border-radius:3px}
+.chk{position:absolute;left:6px;top:6px;width:22px;height:22px;border-radius:5px;border:1.5px solid rgba(255,255,255,.9);background:rgba(0,0,0,.28);display:grid;place-items:center;color:#fff;opacity:0;transition:opacity .1s;padding:0}
+.chk .ic{width:14px;height:14px;stroke-width:2.2;opacity:0}
+.card:hover .chk,.card.selected .chk,.chk:focus-visible{opacity:1}
+.card.selected .chk{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.card.selected .chk .ic{opacity:1}
+.pill{position:absolute;right:6px;top:6px;display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+.st-done{background:var(--ok-soft);color:var(--ok)}
+.st-new{background:var(--accent-soft);color:var(--accent)}
+.st-processing,.st-queued{background:var(--warn-soft);color:var(--warn)}
+.st-failed{background:var(--bad-soft);color:var(--bad)}
+.st-too_small,.st-recording{background:var(--muted-soft);color:var(--fg2)}
+.pill .ic{width:13px;height:13px;stroke-width:2}
+.rec-dot{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.35)}
+.progress i{display:block;height:100%;background:var(--warn);transition:width .4s}
+.cname{font-weight:600;font-size:14px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px}
+.cmeta{display:flex;gap:10px;color:var(--fg2);font-size:12px;line-height:16px;padding:0 2px;flex-wrap:wrap}
+.score{position:absolute;right:6px;top:6px;min-width:30px;height:22px;padding:0 7px;border-radius:11px;background:rgba(0,0,0,.72);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+.score.top{background:var(--accent);color:var(--accent-fg)}
+.used{display:inline-flex;align-items:center;gap:4px;color:var(--fg3)}
+.inqueue{color:var(--accent);font-weight:600}
+
+/* details table */
+.tablewrap{overflow-x:auto;border:1px solid var(--stroke);border-radius:var(--r-md);background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:13px}
+th{font-weight:600;text-align:left;color:var(--fg2);padding:8px 10px;border-bottom:1px solid var(--stroke);white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--stroke);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--hover)}
+tbody tr.selected{background:var(--accent-soft)}
+td.r,th.r{text-align:right}
+.tpill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;font-size:12px;font-weight:600}
+.boxchk{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--fg3);background:var(--card);display:grid;place-items:center;padding:0;color:var(--accent-fg)}
+.boxchk .ic{width:12px;height:12px;stroke-width:2.4;opacity:0}
+.boxchk[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.boxchk[aria-checked="true"] .ic{opacity:1}
+
+/* command bar */
+.cmdbar{position:sticky;bottom:12px;margin:0 auto;width:max-content;max-width:calc(100% - 32px);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:8px 8px 8px 16px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-lg);box-shadow:0 8px 28px var(--shadow);
+  transform:translateY(0);transition:transform .18s ease,opacity .18s;z-index:5}
+.cmdbar.hide{transform:translateY(24px);opacity:0;pointer-events:none}
+.cmdbar .info{font-size:13px;color:var(--fg2);margin-right:8px;white-space:nowrap}
+.cmdbar .info strong{color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:32px;padding:0 14px;border-radius:var(--r-sm);border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);background:var(--card);font-size:14px;white-space:nowrap}
+.btn:hover{background:var(--card-hover)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.danger{color:var(--bad)}
+.btn.danger-solid{background:var(--bad);border-color:var(--bad);color:var(--card)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--hover)}
+.btn.sm{height:28px;padding:0 10px;font-size:13px}
+
+/* queue */
+.queue{width:320px;border-left:1px solid var(--stroke);background:var(--bg);display:flex;flex-direction:column;min-height:0}
+.queue[hidden]{display:none}
+.qhead{display:flex;align-items:center;gap:8px;padding:16px 16px 8px}
+.qhead h2{font:600 16px/22px var(--font-display);margin:0}
+.qhead .grow{flex:1}
+.qlist{list-style:none;margin:0;padding:4px 10px;overflow:auto;flex:1;min-height:80px;display:flex;flex-direction:column;gap:4px}
+.qitem{display:grid;grid-template-columns:16px 64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px;border-radius:var(--r-sm);background:var(--card);border:1px solid var(--stroke)}
+.qitem.dragging{opacity:.4}
+.qitem.over{box-shadow:0 -2px 0 var(--accent)}
+.qitem .grip{cursor:grab;color:var(--fg3)}
+.qitem .grip .ic{stroke-width:2.6}
+.qitem .mini{aspect-ratio:16/9;border-radius:4px;overflow:hidden;position:relative;width:64px}
+.qitem .t{min-width:0}
+.qitem .t b{display:block;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qitem .t span{display:block;font-size:12px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:28px;height:28px;border:0;border-radius:var(--r-sm);background:transparent;display:grid;place-items:center;color:var(--fg2);padding:0}
+.iconbtn:hover{background:var(--hover);color:var(--fg)}
+.qempty{padding:24px 16px;color:var(--fg2);font-size:13px;text-align:center}
+.timeline{margin:6px 16px 4px;position:relative;height:28px;border-radius:5px;background:var(--muted-soft);display:flex;overflow:hidden}
+.timeline i{display:block;height:100%;border-right:2px solid var(--bg);min-width:4px}
+.timeline .limit{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg)}
+.tl-label{display:flex;justify-content:space-between;padding:0 16px;font-size:12px;color:var(--fg2)}
+.tl-label.over{color:var(--bad)}
+.qopts{padding:12px 16px;display:grid;gap:10px;border-top:1px solid var(--stroke);margin-top:10px}
+.field{display:grid;grid-template-columns:84px minmax(0,1fr);align-items:center;gap:8px;font-size:13px}
+.field label{color:var(--fg2)}
+.field input[type=text]{height:30px;padding:0 8px;border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm);background:var(--card);min-width:0;width:100%}
+.musicpick{display:flex;gap:6px;min-width:0}
+.musicpick span{flex:1;min-width:0;height:30px;line-height:28px;padding:0 8px;border:1px solid var(--stroke);border-radius:var(--r-sm);background:var(--card);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--fg2)}
+.switch{width:40px;height:20px;border-radius:10px;border:1px solid var(--fg2);background:transparent;position:relative;padding:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:var(--fg2);transition:left .15s}
+.switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.switch[aria-checked="true"]::after{left:23px;background:var(--accent-fg)}
+.qactions{display:flex;gap:8px;padding:12px 16px 16px}
+.qactions .btn{flex:1}
+
+/* flyouts */
+.flyout{position:absolute;top:52px;right:8px;bottom:8px;width:380px;max-width:calc(100% - 16px);background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-lg);
+  box-shadow:0 16px 48px var(--shadow);display:flex;flex-direction:column;z-index:20;animation:flyin .16s ease}
+@keyframes flyin{from{transform:translateX(16px);opacity:0}}
+.flyhead{display:flex;align-items:center;gap:8px;padding:14px 12px 10px 18px;border-bottom:1px solid var(--stroke)}
+.flyhead h2{margin:0;font:600 16px/22px var(--font-display);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flybody{overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.job{border:1px solid var(--stroke);border-radius:var(--r-md);padding:12px;display:grid;gap:8px;background:var(--surface)}
+.job .top{display:flex;gap:10px;align-items:flex-start}
+.job .top b{display:block;font-size:13px;line-height:18px}
+.job .top span{display:block;font-size:12px;color:var(--fg2)}
+.job .top .grow{flex:1;min-width:0}
+.steps{display:flex;gap:3px}
+.steps i{flex:1;height:4px;border-radius:2px;background:var(--muted-soft)}
+.steps i.done{background:var(--ok)}
+.steps i.now{background:var(--warn)}
+.job .stepname{font-size:12px;color:var(--fg2);display:flex;justify-content:space-between}
+.job .report{font-size:12px;color:var(--fg2);background:var(--card);border-radius:var(--r-sm);padding:8px 10px;border:1px solid var(--stroke)}
+.sectionlabel{font-size:12px;color:var(--fg3);font-weight:600;margin-top:4px}
+.detail-player{position:relative;aspect-ratio:16/9;border-radius:var(--r-md);overflow:hidden}
+.bigplay{position:absolute;inset:0;margin:auto;width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.6);border:0;display:grid;place-items:center;color:#fff}
+.bigplay .ic{width:22px;height:22px}
+.meters{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.meter{font-size:12px;color:var(--fg2)}
+.meter div{height:4px;border-radius:2px;background:var(--muted-soft);margin-top:4px;overflow:hidden}
+.meter div i{display:block;height:100%;background:var(--accent)}
+.yt{border:1px solid var(--stroke);border-radius:var(--r-md);overflow:hidden}
+.yt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:10px 12px;border-bottom:1px solid var(--stroke);align-items:start}
+.yt-row:last-child{border-bottom:0}
+.yt-row small{display:block;color:var(--fg3);font-size:12px;margin-bottom:2px}
+.yt-row p{margin:0;font-size:13px;line-height:19px;overflow-wrap:anywhere}
+
+/* merged */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.mcard{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px;padding:12px;border-radius:var(--r-md);background:var(--card);border:1px solid var(--stroke)}
+.mcard.long{grid-template-columns:minmax(0,1fr)}
+.mcard .info{display:flex;flex-direction:column;gap:8px;min-width:0}
+.mcard h3{margin:0;font:600 15px/20px var(--font-display);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcard .facts{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+.mcard .facts dt{color:var(--fg3)}
+.mcard .facts dd{margin:0;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11px;line-height:18px;padding:0 7px;border-radius:9px;background:var(--muted-soft);color:var(--fg2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mactions{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto}
+
+/* settings */
+.settings{max-width:760px;display:grid;gap:4px}
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px 16px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-sm)}
+.srow b{display:block;font-weight:400}
+.srow span{display:block;font-size:12px;color:var(--fg2);overflow-wrap:anywhere}
+.shead{font:600 14px/20px var(--font-display);margin:18px 0 6px}
+.okline{display:flex;align-items:center;gap:6px;color:var(--ok);font-size:13px;font-weight:600}
+
+/* dialog */
+dialog{border:1px solid var(--stroke);border-radius:var(--r-lg);padding:0;background:var(--card);color:var(--fg);width:min(520px,calc(100vw - 32px));box-shadow:0 24px 64px var(--shadow)}
+dialog::backdrop{background:var(--scrim)}
+.dlg-body{padding:24px 24px 18px;display:grid;gap:12px}
+.dlg-body h2{margin:0;font:600 20px/28px var(--font-display)}
+.dlg-body p{margin:0;color:var(--fg2)}
+.dlg-list{max-height:200px;overflow:auto;border:1px solid var(--stroke);border-radius:var(--r-sm);font-size:13px}
+.dlg-list div{display:flex;justify-content:space-between;gap:12px;padding:6px 10px;border-bottom:1px solid var(--stroke)}
+.dlg-list div:last-child{border-bottom:0}
+.dlg-list span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dlg-list .tag{color:var(--warn);font-size:12px;white-space:nowrap}
+.warnbox{display:flex;gap:10px;padding:10px 12px;border-radius:var(--r-sm);background:var(--warn-soft);color:var(--fg);font-size:13px}
+.warnbox .ic{color:var(--warn);margin-top:2px}
+.dlg-foot{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px;background:var(--bg);border-top:1px solid var(--stroke)}
+.dlg-foot .btn{min-width:120px}
+dialog.player{width:min(960px,calc(100vw - 32px))}
+.player .stage{position:relative;aspect-ratio:16/9;background:#000}
+.player .stage.portrait{aspect-ratio:auto;height:min(70vh,640px);display:flex;justify-content:center}
+.player .stage.portrait .thumb{height:100%;border-radius:0}
+.pctl{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--card)}
+.pctl .track{flex:1;height:4px;border-radius:2px;background:var(--muted-soft);position:relative}
+.pctl .track i{position:absolute;left:0;top:0;bottom:0;width:22%;background:var(--accent);border-radius:2px}
+.plan table{min-width:0}
+.plan td,.plan th{padding:6px 8px}
+
+/* music */
+.watch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg2)}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.playbtn{width:28px;height:28px;border-radius:50%;border:1px solid var(--stroke);background:var(--card);display:grid;place-items:center;padding:0;color:var(--fg)}
+.playbtn:hover{background:var(--card-hover)}
+.playbtn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.playbtn .ic{width:12px;height:12px}
+.tt b{display:block;font-weight:600}
+.tt span{display:block;font-size:12px;color:var(--fg3)}
+.tpill.btnlike{border:0;cursor:pointer}
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--r-md);background:var(--accent-soft);font-size:13px;margin-bottom:16px;max-width:900px}
+.banner .ic{color:var(--accent);margin-top:2px}
+.banner p{margin:0}
+.ncs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.tcard{display:flex;flex-direction:column;gap:8px;padding:8px 8px 12px;border-radius:var(--r-md);background:var(--card);border:1px solid var(--stroke);min-width:0}
+.cover{aspect-ratio:1/1;border-radius:6px;position:relative;overflow:hidden;max-width:100%}
+.cover svg{position:absolute;inset:0;width:100%;height:100%}
+.cover .playbtn{position:absolute;right:8px;bottom:8px;width:36px;height:36px;border:0}
+.tcard .tt{padding:0 2px;min-width:0}
+.tcard .tt b,.tcard .tt span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcard .chips{padding:0 2px}
+.tcard .btn{width:100%}
+.inlib{display:flex;align-items:center;justify-content:center;gap:6px;height:32px;color:var(--ok);font-weight:600;font-size:13px}
+.srcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;max-width:1100px}
+.srccard{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:var(--r-md);background:var(--card);border:1px solid var(--stroke)}
+.srccard h3{margin:0;font:600 15px/20px var(--font-display);display:flex;align-items:center;gap:8px}
+.srccard p{margin:0;font-size:13px;color:var(--fg2)}
+.srccard .row{display:flex;gap:8px}
+.srccard input[type=text]{flex:1;min-width:0;height:32px;padding:0 8px;border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm);background:var(--surface)}
+.lookup{border:1px solid var(--stroke);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;display:grid;gap:8px;background:var(--surface)}
+.drop{border:1.5px dashed var(--stroke-strong);border-radius:var(--r-md);padding:22px 12px;text-align:center;color:var(--fg2);font-size:13px}
+.note{font-size:12px;color:var(--fg3)}
+.form{display:grid;gap:12px}
+.form label{display:grid;gap:4px;font-size:13px;color:var(--fg2)}
+.form input[type=text],.form select,.form textarea{height:32px;padding:0 8px;border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);border-radius:var(--r-sm);background:var(--surface);color:var(--fg);width:100%}
+.form textarea{height:auto;min-height:96px;padding:8px;resize:vertical;font:13px/19px var(--font)}
+.form .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.checkline{display:flex!important;grid-template-columns:none;align-items:center;gap:8px}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:var(--r-md);
+  background:var(--fg);color:var(--bg);font-size:13px;box-shadow:0 8px 24px var(--shadow);z-index:40;max-width:calc(100% - 32px)}
+.toast .btn{background:transparent;color:var(--bg);border-color:transparent;height:28px}
+.toast .btn:hover{background:rgba(127,127,127,.25)}
+.toast small{display:block;opacity:.75}
+
+.empty{padding:48px 16px;text-align:center;color:var(--fg2)}
+.empty b{display:block;color:var(--fg);font-size:16px;margin-bottom:4px}
+
+@media (max-width:1100px){
+  .queue{position:absolute;right:0;top:44px;bottom:0;z-index:15;box-shadow:-8px 0 32px var(--shadow)}
+}
+@media (max-width:720px){
+  .body{grid-template-columns:minmax(0,1fr)}
+  .nav{position:absolute;left:0;right:0;bottom:0;flex-direction:row;z-index:12;border-right:0;border-top:1px solid var(--stroke);padding:4px}
+  .nav button{flex:1;flex-direction:column;gap:2px;height:52px;font-size:11px;justify-content:center;padding:0}
+  .nav button[aria-current="page"]::before{left:30%;right:30%;top:auto;bottom:3px;width:auto;height:3px}
+  .nav .grow,.nav .badge{display:none}
+  .page{padding:16px 16px 140px}
+  .disk,.apptitle,.caption{display:none}
+  .queue{width:100%;top:44px;bottom:61px}
+  .cmdbar{bottom:72px}
+  .mcard{grid-template-columns:96px minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="window" id="win">
+  <div class="titlebar">
+    <span class="appmark"><svg viewBox="0 0 20 20" class="ic" style="stroke-width:2.4"><path d="M6.5 4.5v11l9-5.5z" fill="currentColor" stroke="none"/></svg></span>
+    <span class="apptitle">Highlight Studio</span>
+    <span class="tb-spacer"></span>
+    <span class="disk num" title="Drive E: space"><svg class="ic" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M14 10h.01"/></svg><span id="diskTxt">E: 114 GB free of 508 GB</span><span class="bar"><i id="diskBar" style="width:78%"></i></span></span>
+    <button class="tb-btn" data-action="toggle-queue" id="qBtn" aria-pressed="true"></button>
+    <button class="tb-btn" data-action="toggle-jobs" id="jBtn" aria-pressed="false"></button>
+    <span class="caption" aria-hidden="true"><span>&#x2500;</span><span>&#x25A1;</span><span>&#x2715;</span></span>
+  </div>
+  <div class="body">
+    <nav class="nav" id="nav" aria-label="Pages"></nav>
+    <main id="main"></main>
+    <aside class="queue" id="queue" aria-label="Merge queue"></aside>
+  </div>
+  <div id="flyout"></div>
+  <div id="toastHost"></div>
+</div>
+
+<dialog id="dlg"></dialog>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const P={
+ video:'<rect x="2.5" y="5" width="11" height="10" rx="2"/><path d="M13.5 9l4-2.5v7l-4-2.5"/>',
+ scissors:'<circle cx="5.5" cy="6" r="2.5"/><circle cx="5.5" cy="14" r="2.5"/><path d="M7.6 7.3L17 15M7.6 12.7L17 5"/>',
+ stack:'<rect x="3" y="7" width="14" height="10" rx="2"/><path d="M5 4.5h10M7 2h6"/>',
+ gear:'<circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/>',
+ trash:'<path d="M3.5 5.5h13M8 5.5V3.8h4v1.7M5 5.5l.8 11h8.4l.8-11M8.5 8.5v5M11.5 8.5v5"/>',
+ play:'<path d="M6.5 4.5v11l9-5.5z" fill="currentColor" stroke="none"/>',
+ sparkle:'<path d="M10 2.5l1.6 4.6 4.6 1.6-4.6 1.6L10 15l-1.6-4.7-4.6-1.6 4.6-1.6z"/><path d="M15.5 13.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/>',
+ plus:'<path d="M10 4v12M4 10h12"/>',
+ folder:'<path d="M2.5 6v9a1.5 1.5 0 001.5 1.5h12a1.5 1.5 0 001.5-1.5V8a1.5 1.5 0 00-1.5-1.5H10L8.3 4.5H4A1.5 1.5 0 002.5 6z"/>',
+ check:'<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
+ chevron:'<path d="M7.5 5l5 5-5 5"/>',
+ grid:'<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/>',
+ list:'<path d="M7 5h10M7 10h10M7 15h10M3 5h.01M3 10h.01M3 15h.01"/>',
+ search:'<circle cx="8.5" cy="8.5" r="5"/><path d="M12.5 12.5l4.5 4.5"/>',
+ x:'<path d="M5 5l10 10M15 5L5 15"/>',
+ grip:'<path d="M7.5 5h.01M12.5 5h.01M7.5 10h.01M12.5 10h.01M7.5 15h.01M12.5 15h.01"/>',
+ music:'<path d="M7.5 15V4.5l9-2v10"/><circle cx="5.5" cy="15" r="2"/><circle cx="14.5" cy="12.5" r="2"/>',
+ copy:'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V4.5A1.5 1.5 0 0011.5 3h-7A1.5 1.5 0 003 4.5v7A1.5 1.5 0 004.5 13H7"/>',
+ activity:'<path d="M2.5 10h3l2-5 4 10 2-5h4"/>',
+ queue:'<path d="M3 5h10M3 10h10M3 15h6M15 12v6M12 15h6"/>',
+ retry:'<path d="M16 10a6 6 0 11-1.8-4.3"/><path d="M16 3.5v3h-3"/>',
+ warn:'<path d="M10 3l7.5 13.5h-15z"/><path d="M10 8v3.5M10 14h.01"/>',
+ loader:'<path d="M10 2.5a7.5 7.5 0 107.5 7.5"/>',
+ eye:'<path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.3"/>',
+ user:'<circle cx="10" cy="7" r="3"/><path d="M4 17c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5"/>'
+};
+const ic=(n,cls='')=>`<svg class="ic ${cls}" viewBox="0 0 20 20" aria-hidden="true">${P[n]}</svg>`;
+
+/* ---------- sample data (example only) ---------- */
+const GAMES={'Valorant':'--g-valorant','Arena Breakout Infinite':'--g-abi','Gray Zone Warfare':'--g-gzw','Wardogs':'--g-wardogs','Desktop':'--g-desktop'};
+const R=(id,game,file,ts,dur,gb,res,status,extra={})=>({id,game,file,ts,dur,gb,res,status,...extra});
+let recs=[
+ R('v1','Valorant','Valorant 2026.11.24 - 21.03.12.04.mp4','2026-11-24T21:03',1930,4.1,'1440p60','done',{clips:6}),
+ R('v2','Valorant','Valorant 2026.11.25 - 19.40.55.17.mp4','2026-11-25T19:40',764,1.6,'1080p60','new'),
+ R('v3','Valorant','Valorant_2026.11.25-22.10.mp4','2026-11-25T22:10',2465,5.3,'1080p120','new'),
+ R('v4','Valorant','Valorant 2026.11.23 - 23.51.02.11.mp4','2026-11-23T23:51',483,0.9,'1080p60','new'),
+ R('a1','Arena Breakout Infinite','Arena Breakout Infinite 2026.11.22 - 15.19.35.01.mp4','2026-11-22T15:19',2902,9.8,'1440p60','done',{clips:5}),
+ R('a2','Arena Breakout Infinite','Arena Breakout Infinite 2026.11.23 - 20.05.11.44.mp4','2026-11-23T20:05',2200,7.4,'1440p60','processing',{prog:.46}),
+ R('a3','Arena Breakout Infinite','Arena Breakout Infinite 2026.11.24 - 14.30.08.02.mp4','2026-11-24T14:30',3138,10.6,'1440p60','new'),
+ R('a5','Arena Breakout Infinite','Arena Breakout Infinite 2026.11.21 - 18.44.21.33.mp4','2026-11-21T18:44',1797,6.1,'1440p60','failed',{reason:'ffprobe could not read the audio track'}),
+ R('a4','Arena Breakout Infinite','Arena Breakout Infinite 2026.11.25 - 01.12.40.90.mp4','2026-11-25T01:12',41,0.08,'1440p60','too_small'),
+ R('g1','Gray Zone Warfare','Gray Zone Warfare 2026.11.20 - 21.15.00.12.mp4','2026-11-20T21:15',3764,12.9,'1440p60','new'),
+ R('g2','Gray Zone Warfare','Gray Zone Warfare 2026.11.25 - 23.58.10.05.mp4','2026-11-25T23:58',252,0.9,'1440p60','recording'),
+ R('w1','Wardogs','Wardogs 2026.11.19 - 22.40.18.60.mp4','2026-11-19T22:40',1471,3.2,'1080p60','new'),
+ R('d1','Desktop','Desktop 2026.11.18 - 20.11.42.09.mp4','2026-11-18T20:11',1100,2.4,'1080p60','new'),
+ R('d2','Desktop','Desktop 2026.11.18 - 20.40.03.51.mp4','2026-11-18T20:40',22,0.04,'1080p60','too_small'),
+];
+const C=(rec,n,title,score,len,parts,used,hook,desc,tags)=>({id:rec+'-'+String(n).padStart(2,'0'),rec,n,title,score,len,parts,used,hook,desc,tags});
+let clips=[
+ C('v1',1,'Ace clutch on B site',92,24,[95,90,92],1,'Five kills, one bullet left','Last alive on B, spike planted, five enemies coming. This is how it ended.','#valorant #ace #clutch #gaming'),
+ C('v1',2,'4K retake with Sheriff',81,31,[78,85,80],1,'Sheriff only, four heads','Eco round retake with just a Sheriff.','#valorant #sheriff #gaming'),
+ C('v1',3,'Op flick through smoke',74,18,[80,70,72],0,'Didn\'t even see him','Blind Operator flick through the Brimstone smoke.','#valorant #operator #gaming'),
+ C('v1',4,'1v3 post-plant',68,27,[60,72,71],0,'Three on the defuse','Holding the post-plant alone against three.','#valorant #1v3 #gaming'),
+ C('v1',5,'Knife the last guy',61,15,[70,55,58],0,'Disrespect round','Last kill of the half with the knife.','#valorant #knife #gaming'),
+ C('v1',6,'Eco round triple',55,22,[52,58,55],0,'Classic only','Triple kill on an eco round.','#valorant #eco #gaming'),
+ C('a1',1,'Squad wipe at the dam',88,46,[90,92,82],1,'Three-man squad, gone','Full squad wipe on the dam bridge before extract.','#arenabreakout #squadwipe #gaming'),
+ C('a1',2,'Extract under fire',79,38,[74,80,83],0,'Ten seconds to extract','Made the extract with the timer running out.','#arenabreakout #extract #gaming'),
+ C('a1',3,'Ambush in the bunker',71,29,[76,70,67],0,'They walked right in','Waited in the bunker corner for the push.','#arenabreakout #ambush #gaming'),
+ C('a1',4,'Long-range tap',63,21,[60,66,62],0,'280 m tap','One-tap at range on the ridge.','#arenabreakout #sniper #gaming'),
+ C('a1',5,'Loot goblin escape',52,34,[50,48,58],0,'Full bag, no armour','Ran the whole map with a full backpack.','#arenabreakout #loot #gaming'),
+];
+let merged=[
+ {id:'m1',name:'Valorant ace night',fmt:'short',len:58,res:'1440×2560',tracks:['t1'],date:'24 Nov 2026, 23:40',gb:0.15,clips:['v1-01','v1-02'],game:'Valorant'},
+ {id:'m2',name:'Dam raid',fmt:'short',len:44,res:'1080×1920',tracks:['t2'],date:'23 Nov 2026, 11:05',gb:0.08,clips:['a1-01'],game:'Arena Breakout Infinite'},
+ {id:'m3',name:'November highlights',fmt:'long',len:372,res:'2560×1440',tracks:['t1','t3'],date:'25 Nov 2026, 09:12',gb:0.98,clips:['v1-01','v1-02','a1-01'],game:'Arena Breakout Infinite'},
+];
+/* music library: credit is 'ready', 'none' (source needs no credit) or 'missing' */
+const ncsCredit=(a,t)=>`Song: ${a} - ${t} [NCS Release]\nMusic provided by NoCopyrightSounds\nFree Download/Stream: ncs.io/${t.toLowerCase().replace(/[^a-z0-9]/g,'')}`;
+let tracks=[
+ {id:'t1',title:'Neon Drive',artist:'Kairo',source:'NCS',len:212,credit:'ready',text:ncsCredit('Kairo','Neon Drive'),file:'Kairo - Neon Drive.mp3'},
+ {id:'t2',title:'Low Light',artist:'Mira Sol',source:'YouTube Audio Library',len:178,credit:'none',text:'',file:'Low Light.mp3'},
+ {id:'t3',title:'Overclock',artist:'Velvet Arc',source:'NCS',len:196,credit:'ready',text:ncsCredit('Velvet Arc','Overclock'),file:'Velvet Arc - Overclock.mp3'},
+ {id:'t4',title:'night_drive_final',artist:'',source:'Imported file',len:241,credit:'missing',text:'',file:'night_drive_final.mp3'},
+];
+const ncsCat=[['Skyline Rush','Varo','Drum & Bass','Energetic',204],['Afterburn','Lumen & Kade','Dubstep','Aggressive',187],['Glasswork','Seren','Future Bass','Uplifting',221],
+ ['Overclock','Velvet Arc','Electronic','Energetic',196],['Hollow Point','Rexa','Trap','Dark',173],['Night Shift','Oduya','House','Driving',232],
+ ['Static Bloom','Mareen','Melodic Dubstep','Epic',245],['Turbine','Kairo','Drum & Bass','Aggressive',199]].map(([title,artist,genre,mood,len],i)=>({id:'n'+i,title,artist,genre,mood,len}));
+const trackOf=id=>tracks.find(t=>t.id===id);
+const usedCount=id=>merged.filter(m=>(m.tracks||[]).includes(id)).length;
+const STEPS=['Claim','Probe','Analyze','Plan clips','Render','Check','Finish'];
+const MSTEPS=['Read clips','Beat-sync','Cut','Encode','Finish'];
+let jobs=[
+ {id:'j1',kind:'hl',rec:'a2',model:'Opus (default)',prog:.46,state:'running',started:Date.now()-372000},
+ {id:'j0',kind:'hl',rec:'v1',model:'Sonnet',prog:1,state:'done',took:'9 min',report:'6 shorts. Best: "Ace clutch on B site" (92). 3 matches, 41 kills found. Used 38k tokens.'},
+];
+
+let S={page:'footage',view:'grid',q:'',status:'all',sort:'newest',sel:{footage:new Set(),shorts:new Set()},
+ queue:['v1-03','a1-02','v1-04'],queueOpen:true,jobsOpen:false,detail:null,collapsed:new Set(),
+ fmt:'short',hq:true,style:'punchy',transition:'auto',mergeMusic:'any',outName:'Valorant + ABI mix',minScore:0,theme:'system',
+ musicTab:'library',ncsQ:'',genre:'all',playing:null,waiting:new Set(),trackSel:new Set(),watch:true,lookup:null,link:''};
+
+/* ---------- helpers ---------- */
+const recOf=id=>recs.find(r=>r.id===id), clipOf=id=>clips.find(c=>c.id===id);
+const dur=s=>{s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
+const gb=v=>v<1?`${Math.round(v*1000)} MB`:`${v.toFixed(1)} GB`;
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const when=ts=>{const d=new Date(ts);return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+const seedOf=s=>{let h=7;for(const ch of s)h=(h*31+ch.charCodeAt(0))>>>0;return h};
+const STATUS={done:'Done',new:'New',processing:'Processing',queued:'Queued',failed:'Failed',too_small:'Too small',recording:'Recording'};
+const runnable=r=>r.status==='new'||r.status==='failed';
+const selectable=r=>r.status!=='recording'&&r.status!=='processing'&&r.status!=='queued';
+
+/* ---------- generated stand-in frames (the real app shows ffmpeg thumbnails) ---------- */
+const PAL={'Valorant':['#3b2a4a','#e0907a','#5a3f5e','#2a2233','#ff4655'],'Arena Breakout Infinite':['#4f5a63','#b3ad94','#5d6555','#353a2e','#e8c35a'],
+ 'Gray Zone Warfare':['#26403c','#a8c2aa','#3d5a48','#22352a','#9be3b0'],'Wardogs':['#2a3150','#9295c0','#474d73','#272a42','#b9a8ff'],'Desktop':['#2e343d','#86909c','#4a525d','#2a2f36','#cfd8e3']};
+let uid=0;
+function scene(key,game,portrait){
+  const p=PAL[game]||PAL.Desktop; let s=seedOf(key); const rnd=()=>((s=(s*1103515245+12345)>>>0)/4294967296);
+  const W=portrait?90:320,H=portrait?160:180,SW=Math.round(W*1.7),hz=H*(.5+rnd()*.12); const id='g'+(uid++);
+  let hills=`M0 ${hz}`; for(let x=0;x<=SW;x+=SW/9) hills+=` L${x.toFixed(1)} ${(hz-8-rnd()*26).toFixed(1)}`; hills+=` L${SW} ${H} L0 ${H}Z`;
+  let blds=''; for(let x=rnd()*20;x<SW;x+=14+rnd()*30){const w=10+rnd()*22,h=12+rnd()*(H*.28);blds+=`<rect x="${x.toFixed(1)}" y="${(hz+6-h).toFixed(1)}" width="${w.toFixed(1)}" height="${(h+H).toFixed(1)}" fill="${p[3]}"/>`}
+  const sun=`<circle cx="${(SW*(.2+rnd()*.6)).toFixed(1)}" cy="${(hz*.45).toFixed(1)}" r="${(H*.09).toFixed(1)}" fill="${p[1]}" opacity=".7"/>`;
+  const cx=W/2,cy=H/2;
+  const hud=`<g stroke="${p[4]}" stroke-width="1.4" opacity=".9"><path d="M${cx-7} ${cy}h4M${cx+3} ${cy}h4M${cx} ${cy-7}v4M${cx} ${cy+3}v4"/></g>
+   <rect x="6" y="6" width="${W*.16}" height="${W*.16}" rx="3" fill="#fff" opacity=".14"/>
+   <rect x="8" y="${H-12}" width="${W*.22}" height="4" rx="2" fill="#fff" opacity=".2"/><rect x="8" y="${H-12}" width="${W*.22*(.4+rnd()*.6)}" height="4" rx="2" fill="${p[4]}" opacity=".85"/>
+   <rect x="${W-8-W*.12}" y="${H-14}" width="${W*.12}" height="7" rx="2" fill="#fff" opacity=".22"/>`;
+  return `<svg class="scene" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+   <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient>
+   <radialGradient id="${id}v" cx=".5" cy=".5" r=".75"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient></defs>
+   <g class="pan" style="transform:translateX(${-(SW-W)*.3}px)" data-span="${SW-W}">
+    <rect width="${SW}" height="${H}" fill="url(#${id})"/>${sun}<path d="${hills}" fill="${p[2]}"/>${blds}
+    <rect y="${hz+4}" width="${SW}" height="${H}" fill="${p[3]}" opacity=".85"/></g>
+   ${hud}<rect width="${W}" height="${H}" fill="url(#${id}v)"/></svg>`;
+}
+
+/* ---------- shell ---------- */
+function renderNav(){
+  const doneN=recs.filter(r=>r.status==='new').length;
+  const items=[['footage','video','Footage',`${recs.length}`],['shorts','scissors','Shorts',`${clips.length}`],['merged','stack','Merged',`${merged.length}`],['music','music','Music',`${tracks.length}`]];
+  $('#nav').innerHTML=items.map(([k,i,l,b])=>`<button data-action="nav" data-page="${k}" ${S.page===k?'aria-current="page"':''}>${ic(i)}<span>${l}</span><span class="badge num">${b}</span></button>`).join('')
+   +`<span class="grow"></span><button data-action="nav" data-page="settings" ${S.page==='settings'?'aria-current="page"':''}>${ic('gear')}<span>Settings</span></button>`;
+  const running=jobs.filter(j=>j.state==='running'||j.state==='queued').length;
+  $('#jBtn').innerHTML=`${running?ic('loader','spin'):ic('activity')}<span>Jobs</span><span class="count num ${running?'':'zero'}">${running}</span>`;
+  $('#jBtn').setAttribute('aria-pressed',S.jobsOpen);
+  $('#qBtn').innerHTML=`${ic('queue')}<span>Merge queue</span><span class="count num ${S.queue.length?'':'zero'}">${S.queue.length}</span>`;
+  $('#qBtn').setAttribute('aria-pressed',S.queueOpen);
+}
+function render(){
+  renderNav();
+  const m=$('#main'); const keep=m.scrollTop;
+  m.innerHTML=({footage:pageFootage,shorts:pageShorts,merged:pageMerged,music:pageMusic,settings:pageSettings})[S.page]();
+  m.scrollTop=keep;
+  renderQueue(); renderFlyout();
+}
+
+/* ---------- Footage ---------- */
+function filteredRecs(){
+  let list=recs.filter(r=>(S.status==='all'||(S.status==='done'?r.status==='done':S.status==='new'?runnable(r):r.status===S.status))
+    &&(!S.q||r.file.toLowerCase().includes(S.q.toLowerCase())));
+  const sorters={newest:(a,b)=>b.ts.localeCompare(a.ts),oldest:(a,b)=>a.ts.localeCompare(b.ts),size:(a,b)=>b.gb-a.gb,length:(a,b)=>b.dur-a.dur};
+  return list.sort(sorters[S.sort]);
+}
+function pill(r){
+  if(r.status==='done')return `<span class="pill st-done">${ic('check')}${r.clips} shorts</span>`;
+  if(r.status==='processing')return `<span class="pill st-processing">${ic('loader','spin')}<span data-prog-txt="${r.id}">${Math.round(r.prog*100)}%</span></span>`;
+  if(r.status==='recording')return `<span class="pill st-recording"><span class="rec-dot"></span>Recording</span>`;
+  return `<span class="pill st-${r.status}">${STATUS[r.status]}</span>`;
+}
+function recCard(r){
+  const sel=S.sel.footage.has(r.id), dis=!selectable(r);
+  return `<div class="card ${sel?'selected':''} ${dis?'disabled':''}" data-action="card" data-id="${r.id}" data-kind="footage" title="${r.file}">
+   <div class="thumb" data-scrub="${r.dur}">${scene(r.id,r.game)}<span class="scrub"></span><span class="scrubtime num"></span>
+    ${dis?'':`<button class="chk" data-action="check" data-id="${r.id}" data-kind="footage" role="checkbox" aria-checked="${sel}" aria-label="Select ${r.file}">${ic('check')}</button>`}
+    ${pill(r)}<span class="dur num">${dur(r.dur)}</span>
+    ${r.status==='processing'?`<span class="progress"><i data-prog="${r.id}" style="width:${r.prog*100}%"></i></span>`:''}</div>
+   <div class="cname">${when(r.ts)}</div>
+   <div class="cmeta num"><span>${gb(r.gb)}</span><span>${r.res}</span>${r.status==='failed'?`<span style="color:var(--bad)">${r.reason}</span>`:''}</div></div>`;
+}
+function recRow(r){
+  const sel=S.sel.footage.has(r.id),dis=!selectable(r);
+  const st=r.status==='done'?`${r.clips} shorts`:r.status==='processing'?`Processing ${Math.round(r.prog*100)}%`:STATUS[r.status];
+  return `<tr class="${sel?'selected':''}" data-action="card" data-id="${r.id}" data-kind="footage">
+   <td>${dis?'':`<button class="boxchk" data-action="check" data-id="${r.id}" data-kind="footage" role="checkbox" aria-checked="${sel}" aria-label="Select">${ic('check')}</button>`}</td>
+   <td>${r.file}</td><td class="r num">${dur(r.dur)}</td><td class="r num">${gb(r.gb)}</td><td>${r.res}</td><td class="num">${when(r.ts)}</td>
+   <td><span class="tpill st-${r.status}">${st}</span></td></tr>`;
+}
+function pageFootage(){
+  const list=filteredRecs(); const games=[...new Set(list.map(r=>r.game))];
+  const total=recs.reduce((a,r)=>a+r.gb,0), nNew=recs.filter(r=>r.status==='new').length;
+  let html=`<div class="page"><div class="pagehead"><h1>Footage</h1><span class="sub num">${recs.length} recordings, ${gb(total)} in E:\\Recordings. ${nNew} not processed yet.</span></div>
+  <div class="toolbar">
+   <label class="search">${ic('search')}<input id="q" type="text" placeholder="Search recordings" value="${S.q}" aria-label="Search recordings"></label>
+   <select class="select" id="statusSel" aria-label="Status">${[['all','All statuses'],['new','Not processed'],['done','Done'],['processing','Processing'],['too_small','Too small']].map(([v,l])=>`<option value="${v}" ${S.status===v?'selected':''}>${l}</option>`).join('')}</select>
+   <select class="select" id="sortSel" aria-label="Sort">${[['newest','Newest first'],['oldest','Oldest first'],['size','Largest first'],['length','Longest first']].map(([v,l])=>`<option value="${v}" ${S.sort===v?'selected':''}>${l}</option>`).join('')}</select>
+   <span class="grow"></span>
+   <div class="seg" role="group" aria-label="View"><button data-action="view" data-view="grid" aria-pressed="${S.view==='grid'}">${ic('grid')}Thumbnails</button><button data-action="view" data-view="table" aria-pressed="${S.view==='table'}">${ic('list')}Details</button></div>
+  </div>`;
+  if(!list.length) html+=`<div class="empty"><b>No recordings match</b>Clear the search or pick another status.</div>`;
+  for(const g of games){
+    const rs=list.filter(r=>r.game===g), col=S.collapsed.has(g);
+    html+=`<section class="group ${col?'collapsed':''}"><div class="ghead">
+      <button class="toggle" data-action="collapse" data-g="${g}" aria-expanded="${!col}">${ic('chevron')}<span class="gdot" style="background:var(${GAMES[g]})"></span>${g}</button>
+      <span class="gmeta num">${rs.length} ${rs.length===1?'recording':'recordings'}, ${gb(rs.reduce((a,r)=>a+r.gb,0))}</span><span class="grow"></span>
+      <button class="linkbtn" data-action="sel-group" data-g="${g}" data-mode="new">Select not processed</button>
+      <button class="linkbtn" data-action="sel-group" data-g="${g}" data-mode="all">Select all</button></div><div class="gbody">`;
+    html+= S.view==='grid' ? `<div class="grid">${rs.map(recCard).join('')}</div>`
+      : `<div class="tablewrap"><table><thead><tr><th style="width:36px"></th><th>Name</th><th class="r">Length</th><th class="r">Size</th><th>Resolution</th><th>Recorded</th><th>Status</th></tr></thead><tbody>${rs.map(recRow).join('')}</tbody></table></div>`;
+    html+=`</div></section>`;
+  }
+  html+=`</div>`+cmdbarFootage();
+  return html;
+}
+function cmdbarFootage(){
+  const sel=[...S.sel.footage].map(recOf).filter(Boolean); const n=sel.length;
+  const run=sel.filter(runnable).length, size=sel.reduce((a,r)=>a+r.gb,0);
+  return `<div class="cmdbar ${n?'':'hide'}" role="toolbar" aria-label="Selection">
+   <span class="info num"><strong>${n} selected</strong>, ${gb(size)}</span>
+   <button class="btn primary" data-action="make" ${run?'':'disabled'} title="${n-run?`${n-run} already processed or too small, skipped`:''}">${ic('sparkle')}Make highlights${run?` (${run})`:''}</button>
+   <button class="btn danger" data-action="del-footage">${ic('trash')}Delete${n>1?` (${n})`:''}</button>
+   <button class="btn ghost" data-action="clear" data-kind="footage">Clear</button></div>`;
+}
+
+/* ---------- Shorts ---------- */
+function pageShorts(){
+  const vis=clips.filter(c=>c.score>=S.minScore&&(!S.q||c.title.toLowerCase().includes(S.q.toLowerCase())));
+  const recIds=[...new Set(vis.map(c=>c.rec))]; const games=[...new Set(recIds.map(id=>recOf(id).game))];
+  let html=`<div class="page"><div class="pagehead"><h1>Shorts</h1><span class="sub num">${clips.length} shorts from ${new Set(clips.map(c=>c.rec)).size} recordings in E:\\Highlights</span></div>
+  <div class="toolbar"><label class="search">${ic('search')}<input id="q" type="text" placeholder="Search shorts" value="${S.q}" aria-label="Search shorts"></label>
+   <select class="select" id="minScore" aria-label="Minimum score">${[0,60,70,80].map(v=>`<option value="${v}" ${S.minScore==v?'selected':''}>${v?`Score ${v}+`:'Any score'}</option>`).join('')}</select></div>`;
+  if(!vis.length) html+=`<div class="empty"><b>No shorts yet</b>Pick recordings on the Footage page and choose Make highlights.</div>`;
+  for(const g of games){
+    const col=S.collapsed.has('s:'+g);
+    html+=`<section class="group ${col?'collapsed':''}"><div class="ghead"><button class="toggle" data-action="collapse" data-g="s:${g}" aria-expanded="${!col}">${ic('chevron')}<span class="gdot" style="background:var(${GAMES[g]})"></span>${g}</button></div><div class="gbody">`;
+    for(const rid of recIds.filter(id=>recOf(id).game===g)){
+      const r=recOf(rid), cs=vis.filter(c=>c.rec===rid);
+      html+=`<div class="sub-ghead">${ic('folder')}<strong>${r.file.replace(/\.mp4$/,'')}</strong><span class="num">${cs.length} shorts</span><span class="grow"></span><button class="linkbtn" data-action="sel-rec" data-rec="${rid}">Select all</button></div>
+       <div class="grid small" style="margin-bottom:18px">${cs.map(clipCard).join('')}</div>`;
+    }
+    html+=`</div></section>`;
+  }
+  html+=`</div>`+cmdbarShorts();
+  return html;
+}
+function clipCard(c){
+  const sel=S.sel.shorts.has(c.id), q=S.queue.includes(c.id), r=recOf(c.rec);
+  return `<div class="card ${sel?'selected':''}" data-action="open-clip" data-id="${c.id}" data-kind="shorts">
+   <div class="thumb" data-scrub="${c.len}">${scene(c.id,r.game)}<span class="scrub"></span><span class="scrubtime num"></span>
+    <button class="chk" data-action="check" data-id="${c.id}" data-kind="shorts" role="checkbox" aria-checked="${sel}" aria-label="Select ${c.title}">${ic('check')}</button>
+    <span class="score num ${c.score>=85?'top':''}" title="Score">${c.score}</span><span class="dur num">${dur(c.len)}</span></div>
+   <div class="cname">${c.title}</div>
+   <div class="cmeta"><span class="num">#${String(c.n).padStart(2,'0')}</span>${q?`<span class="inqueue">In merge queue</span>`:''}${c.used?`<span class="used">${ic('stack')}Used in ${c.used} ${c.used>1?'merges':'merge'}</span>`:''}</div></div>`;
+}
+function cmdbarShorts(){
+  const n=S.sel.shorts.size, len=[...S.sel.shorts].reduce((a,id)=>a+clipOf(id).len,0);
+  return `<div class="cmdbar ${n?'':'hide'}" role="toolbar" aria-label="Selection"><span class="info num"><strong>${n} selected</strong>, ${dur(len)}</span>
+   <button class="btn primary" data-action="add-queue">${ic('plus')}Add to merge queue</button>
+   <button class="btn danger" data-action="del-shorts">${ic('trash')}Delete${n>1?` (${n})`:''}</button>
+   <button class="btn ghost" data-action="clear" data-kind="shorts">Clear</button></div>`;
+}
+
+/* ---------- Merge queue ---------- */
+const QCOL=['var(--accent)','var(--g-abi)','var(--g-gzw)','var(--g-wardogs)','var(--g-valorant)'];
+function renderQueue(){
+  const el=$('#queue'); el.hidden=!S.queueOpen; if(!S.queueOpen)return;
+  const items=S.queue.map(clipOf).filter(Boolean); const total=items.reduce((a,c)=>a+c.len,0);
+  const limit=S.fmt==='short'?180:null; const scale=limit?Math.max(limit,total):Math.max(total,1);
+  el.innerHTML=`<div class="qhead"><h2>Merge queue</h2><span class="grow"></span>${items.length?`<button class="linkbtn" data-action="q-clear">Clear</button>`:''}<button class="iconbtn" data-action="toggle-queue" aria-label="Hide merge queue">${ic('x')}</button></div>
+  ${items.length?`<ol class="qlist" id="qlist">${items.map((c,i)=>`<li class="qitem" draggable="true" data-qid="${c.id}">
+    <span class="grip" title="Drag to reorder">${ic('grip')}</span><span class="mini">${scene(c.id,recOf(c.rec).game)}</span>
+    <span class="t"><b>${c.title}</b><span class="num">${dur(c.len)}, score ${c.score}</span></span>
+    <button class="iconbtn" data-action="q-remove" data-id="${c.id}" aria-label="Remove ${c.title}">${ic('x')}</button></li>`).join('')}</ol>`
+   :`<div class="qempty">Select shorts and choose <b>Add to merge queue</b>. Drag them here into the order you want.</div><div style="flex:1"></div>`}
+  ${items.length?`<div class="timeline" title="Raw length of each clip">${items.map((c,i)=>`<i style="width:${c.len/scale*100}%;background:${QCOL[i%QCOL.length]};opacity:${limit&&items.slice(0,i).reduce((a,x)=>a+x.len,0)>=limit?.35:1}" title="${c.title} ${dur(c.len)}"></i>`).join('')}${limit?`<span class="limit" style="left:${limit/scale*100}%"></span>`:''}</div>
+   <div class="tl-label num ${limit&&total>limit?'over':''}"><span>${dur(total)} raw</span><span>${limit?(total>limit?`${dur(total-limit)} over the 3:00 Short limit`:`3:00 Short limit`):'No length limit'}</span></div>`:''}
+  <div class="qopts">
+   <div class="field"><label for="outName">Name</label><input type="text" id="outName" value="${S.outName}"></div>
+   <div class="field"><label>Format</label><div class="seg" role="group"><button data-action="fmt" data-v="short" aria-pressed="${S.fmt==='short'}">Short 9:16</button><button data-action="fmt" data-v="long" aria-pressed="${S.fmt==='long'}">Long 16:9</button></div></div>
+   <div class="field"><label for="musicSel">Music</label><select class="select" id="musicSel"><option value="any" ${S.mergeMusic==='any'?'selected':''}>Shuffle tracks that have a credit</option>${tracks.map(t=>`<option value="${t.id}" ${t.credit==='missing'?'disabled':''} ${S.mergeMusic===t.id?'selected':''}>${t.artist?t.artist+' - ':''}${t.title}${t.credit==='missing'?' (add a credit first)':''}</option>`).join('')}</select></div>
+   <div class="field"><label for="styleSel">Style</label><select class="select" id="styleSel"><option value="punchy" ${S.style==='punchy'?'selected':''}>Punchy (zoom and flash on kills)</option><option value="clean" ${S.style==='clean'?'selected':''}>Clean (straight cuts)</option></select></div>
+   <div class="field"><label>1440p HQ</label><button class="switch" data-action="hq" role="switch" aria-checked="${S.hq}" aria-label="1440p high quality"></button></div>
+  </div>
+  <div class="qactions"><button class="btn" data-action="preview" ${items.length<2?'disabled':''}>${ic('eye')}Preview cuts</button><button class="btn primary" data-action="merge" ${items.length<2?'disabled':''} title="${items.length<2?'Add at least 2 shorts':''}">${ic('stack')}Merge</button></div>`;
+  bindDrag();
+}
+function bindDrag(){
+  const list=$('#qlist'); if(!list)return; let dragId=null;
+  list.querySelectorAll('.qitem').forEach(li=>{
+    li.addEventListener('dragstart',e=>{dragId=li.dataset.qid;li.classList.add('dragging');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',dragId)}catch(_){}});
+    li.addEventListener('dragend',()=>{li.classList.remove('dragging');list.querySelectorAll('.over').forEach(x=>x.classList.remove('over'))});
+    li.addEventListener('dragover',e=>{e.preventDefault();list.querySelectorAll('.over').forEach(x=>x.classList.remove('over'));li.classList.add('over')});
+    li.addEventListener('drop',e=>{e.preventDefault();const to=li.dataset.qid;if(!dragId||dragId===to)return;
+      const q=S.queue.filter(x=>x!==dragId);q.splice(q.indexOf(to),0,dragId);S.queue=q;render()});
+  });
+}
+
+/* ---------- Merged ---------- */
+function pageMerged(){
+  let html=`<div class="page"><div class="pagehead"><h1>Merged</h1><span class="sub num">${merged.length} videos in E:\\Merged, ${gb(merged.reduce((a,m)=>a+m.gb,0))}</span></div>`;
+  if(!merged.length) html+=`<div class="empty"><b>Nothing merged yet</b>Build a merge queue on the Shorts page, then choose Merge.</div>`;
+  html+=`<div class="mgrid">${merged.map(m=>`<article class="mcard ${m.fmt}">
+    <div class="thumb ${m.fmt==='short'?'portrait':''}" data-action="play-merged" data-id="${m.id}" style="cursor:pointer">${scene(m.id,m.game,m.fmt==='short')}<span class="dur num">${dur(m.len)}</span></div>
+    <div class="info"><h3 title="${m.name}">${m.name}</h3>
+     <dl class="facts num"><dt>Format</dt><dd>${m.fmt==='short'?'Short, 9:16':'Long, 16:9'}, ${m.res}</dd><dt>Music</dt><dd>${(m.tracks||[]).map(id=>trackOf(id)?.title||'Deleted track').join(', ')||'None'}</dd><dt>Made</dt><dd>${m.date}</dd><dt>Size</dt><dd>${gb(m.gb)}</dd></dl>
+     <div class="chips">${m.clips.map(id=>{const c=clipOf(id);return c?`<span class="chip" title="${c.title}">${c.title}</span>`:`<span class="chip">Deleted short</span>`}).join('')}</div>
+     <div class="mactions"><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button><button class="btn sm ghost" data-action="explorer">${ic('folder')}Show in folder</button>
+      <button class="btn sm ghost" data-action="remerge" data-id="${m.id}">${ic('retry')}Merge again</button><button class="btn sm ghost danger" data-action="del-merged" data-id="${m.id}">${ic('trash')}Delete</button></div></div></article>`).join('')}</div></div>`;
+  return html;
+}
+
+/* ---------- Music ---------- */
+function cover(key){
+  let s=seedOf(key); const rnd=()=>((s=(s*1103515245+12345)>>>0)/4294967296); const id='c'+(uid++);
+  const hues=[[262,320],[200,260],[330,20],[170,220],[20,50]][seedOf(key)%5];
+  let bars=''; for(let i=0;i<24;i++){const h=8+rnd()*44;bars+=`<rect x="${6+i*3.7}" y="${50-h/2}" width="2" height="${h.toFixed(1)}" rx="1" fill="#fff" opacity=".55"/>`}
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hues[0]} 60% 32%)"/><stop offset="1" stop-color="hsl(${hues[1]} 70% 55%)"/></linearGradient></defs><rect width="100" height="100" fill="url(#${id})"/>${bars}</svg>`;
+}
+function creditCell(t){
+  if(t.credit==='ready')return `<span class="tpill st-done">${ic('check')}Credit ready</span>`;
+  if(t.credit==='none')return `<span class="tpill st-new">No credit needed</span>`;
+  return `<button class="tpill st-processing btnlike" data-action="credit" data-id="${t.id}">${ic('warn')}Add credit</button>`;
+}
+function pageMusic(){
+  const missing=tracks.filter(t=>t.credit==='missing').length;
+  const tabs=[['library','Library'],['ncs','Find on NCS'],['other','Other sources']];
+  let html=`<div class="page"><div class="pagehead"><h1>Music</h1><span class="sub num">${tracks.length} tracks in E:\\Music\\Highlights${missing?`, ${missing} without a credit line`:''}</span></div>
+   <div class="toolbar"><div class="seg" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-action="music-tab" data-v="${k}" aria-pressed="${S.musicTab===k}">${l}</button>`).join('')}</div><span class="grow"></span>
+   <span class="watch">${S.watch?'<span class="live-dot"></span>New music in Downloads is added automatically':'Not watching Downloads'}</span></div>`;
+  if(S.musicTab==='library'){
+    if(!tracks.length) html+=`<div class="empty"><b>No music yet</b>Find tracks on NCS or import files you already have.</div>`;
+    else html+=`<div class="tablewrap"><table><thead><tr><th style="width:36px"></th><th style="width:44px"></th><th>Track</th><th>Source</th><th class="r">Length</th><th>Credit</th><th class="r">Used in</th><th></th></tr></thead><tbody>
+     ${tracks.map(t=>{const sel=S.trackSel.has(t.id);return `<tr class="${sel?'selected':''}"><td><button class="boxchk" data-action="track-check" data-id="${t.id}" role="checkbox" aria-checked="${sel}" aria-label="Select ${t.title}">${ic('check')}</button></td>
+      <td><button class="playbtn ${S.playing===t.id?'on':''}" data-action="play-track" data-id="${t.id}" aria-label="Play ${t.title}">${ic('play')}</button></td>
+      <td class="tt"><b>${t.title}</b><span>${t.artist||'Unknown artist'}</span></td><td>${t.source}</td><td class="r num">${dur(t.len)}</td><td>${creditCell(t)}</td>
+      <td class="r num">${usedCount(t.id)?`${usedCount(t.id)} ${usedCount(t.id)>1?'merges':'merge'}`:'Not used'}</td>
+      <td><button class="btn sm ghost" data-action="credit" data-id="${t.id}">Edit</button></td></tr>`}).join('')}</tbody></table></div>
+     <p class="note" style="margin-top:10px">Tracks without a credit line can't be picked for a merge, so a video never goes up without its music credit.</p>`;
+    html+=`</div><div class="cmdbar ${S.trackSel.size?'':'hide'}" role="toolbar"><span class="info"><strong>${S.trackSel.size} selected</strong></span><button class="btn danger" data-action="del-tracks">${ic('trash')}Delete${S.trackSel.size>1?` (${S.trackSel.size})`:''}</button><button class="btn ghost" data-action="clear-tracks">Clear</button></div>`;
+    return html;
+  }
+  if(S.musicTab==='ncs'){
+    const genres=['all',...new Set(ncsCat.map(n=>n.genre))];
+    const list=ncsCat.filter(n=>(S.genre==='all'||n.genre===S.genre)&&(!S.ncsQ||(n.title+' '+n.artist).toLowerCase().includes(S.ncsQ.toLowerCase())));
+    html+=`<div class="banner">${ic('music')}<p>Search the NCS catalogue here and preview tracks. <b>Get track</b> opens the track's page on ncs.io in your browser. Click Download there, and Studio moves the file into your library with the credit line filled in.</p></div>
+     <div class="toolbar"><label class="search">${ic('search')}<input id="ncsQ" type="text" placeholder="Search NCS" value="${S.ncsQ}" aria-label="Search NCS"></label>
+      <select class="select" id="genreSel" aria-label="Genre">${genres.map(g=>`<option value="${g}" ${S.genre===g?'selected':''}>${g==='all'?'All genres':g}</option>`).join('')}</select></div>
+     ${list.length?`<div class="ncs-grid">${list.map(n=>{const have=tracks.some(t=>t.title===n.title&&t.artist===n.artist), wait=S.waiting.has(n.id);
+      return `<div class="tcard"><div class="cover">${cover(n.title)}<button class="playbtn ${S.playing===n.id?'on':''}" data-action="play-track" data-id="${n.id}" aria-label="Preview ${n.title}">${ic('play')}</button></div>
+       <div class="tt"><b>${n.title}</b><span>${n.artist}</span></div><div class="chips"><span class="chip">${n.genre}</span><span class="chip">${n.mood}</span><span class="chip num">${dur(n.len)}</span></div>
+       ${have?`<div class="inlib">${ic('check')}In your library</div>`:wait?`<button class="btn" disabled>${ic('loader','spin')}Waiting for the download</button>`:`<button class="btn" data-action="get-ncs" data-id="${n.id}">Get track</button>`}</div>`}).join('')}</div>`
+      :`<div class="empty"><b>No tracks match</b>Try another name or genre.</div>`}`;
+    return html+`</div>`;
+  }
+  html+=`<div class="srcgrid">
+   <div class="srccard"><h3>${ic('play')}YouTube Audio Library</h3><p>YouTube's own free music. Tracks downloaded from it don't get Content ID claims. Some ask for a credit line, which is shown next to the track.</p>
+    <div><button class="btn" data-action="open-ytal">Open Audio Library</button></div><p class="note">Opens YouTube Studio in your browser. Downloads are added here automatically.</p></div>
+   <div class="srccard"><h3>${ic('search')}Check a link</h3><p>Paste a video from a music channel, such as a repost channel, to see who the original artist is and where to get the track legally.</p>
+    <div class="row"><input type="text" id="linkIn" placeholder="https://youtube.com/watch?v=…" value="${S.link}" aria-label="Video link"><button class="btn" data-action="lookup">Check</button></div>
+    ${S.lookup?`<div class="lookup"><span><b>Repost channel.</b> The description credits <b>Velvet Arc - Overclock [NCS Release]</b>.</span><div><button class="btn sm primary" data-action="goto-ncs" data-q="Overclock">Get it from NCS</button></div></div>`:''}
+    <p class="note">Studio doesn't pull audio out of YouTube videos. YouTube's terms don't allow it, and a repost's copy doesn't come with a license you can point to.</p></div>
+   <div class="srccard"><h3>${ic('folder')}Import files</h3><p>Already have the file? Add MP3, M4A, WAV or FLAC files, then fill in the credit line.</p>
+    <div class="drop">Drop music files here<br><button class="linkbtn" data-action="import">or browse</button></div></div>
+  </div>`;
+  return html+`</div>`;
+}
+function creditDialog(id){
+  const t=trackOf(id);
+  openDialog(`<div class="dlg-body"><h2>Credit for "${t.title}"</h2><p>This text goes into the YouTube description of every merge that uses this track.</p>
+   <div class="form"><div class="two"><label>Title<input type="text" id="cTitle" value="${t.title}"></label><label>Artist<input type="text" id="cArtist" value="${t.artist}"></label></div>
+    <label>Source<select id="cSource">${['NCS','YouTube Audio Library','Imported file','Other'].map(s=>`<option ${t.source===s?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label>Credit line<textarea id="cText" placeholder="For NCS: copy the credit block from the track's ncs.io page">${t.text}</textarea></label>
+    <label class="checkline"><input type="checkbox" id="cNone" ${t.credit==='none'?'checked':''}> This source doesn't need a credit</label></div></div>
+   <div class="dlg-foot"><button class="btn primary" data-action="credit-save" data-id="${t.id}">Save</button><button class="btn" data-action="dlg-close">Cancel</button></div>`);
+}
+function descDialog(id){
+  const m=merged.find(x=>x.id===id); const cs=m.clips.map(clipOf).filter(Boolean);
+  const credits=(m.tracks||[]).map(trackOf).filter(t=>t&&t.credit==='ready').map(t=>t.text).join('\n\n');
+  const tags=[...new Set(cs.flatMap(c=>c.tags.split(' ')))].slice(0,6).join(' ');
+  const txt=`${m.name}\n\n${cs.map(c=>'• '+c.title).join('\n')}\n${credits?`\n${credits}\n`:''}\n${tags}`;
+  openDialog(`<div class="dlg-body"><h2>YouTube description</h2><p>Built from the shorts' text and the music credit. Edit it before copying if you like.</p>
+   <div class="form"><textarea id="descTxt" style="min-height:220px">${txt}</textarea></div></div>
+   <div class="dlg-foot"><button class="btn primary" data-action="copy-desc">${ic('copy')}Copy</button><button class="btn" data-action="dlg-close">Close</button></div>`);
+}
+
+/* ---------- Settings ---------- */
+function pageSettings(){
+  const row=(t,s,ctl)=>`<div class="srow"><div><b>${t}</b><span>${s}</span></div>${ctl}</div>`;
+  return `<div class="page"><div class="pagehead"><h1>Settings</h1></div><div class="settings">
+   <div class="shead">Claude</div>
+   ${row('Account','Uses the account you are signed in to in the Claude Code CLI. No API key is stored here.',`<span class="okline">${ic('check')}Signed in</span>`)}
+   ${row('Model for Valorant','Valorant is mostly scripted, so a lighter model is enough.',`<select class="select"><option>Sonnet</option><option>Same as other games</option></select>`)}
+   ${row('Jobs at the same time','Each recording gets its own agent. Running more at once is faster but heavier on the PC.',`<select class="select"><option>1</option><option>2</option></select>`)}
+   <div class="shead">Folders</div>
+   ${row('Recordings','E:\\Recordings',`<button class="btn sm">Change</button>`)}
+   ${row('Shorts','E:\\Highlights',`<button class="btn sm">Change</button>`)}
+   ${row('Merged videos','E:\\Merged',`<button class="btn sm">Change</button>`)}
+   ${row('Music library','E:\\Music\\Highlights',`<button class="btn sm">Change</button>`)}
+   ${row('Add music from Downloads','When a music file lands in your Downloads folder after you choose Get track, move it into the library.',`<button class="switch" data-action="watch" role="switch" aria-checked="${S.watch}" aria-label="Add music from Downloads"></button>`)}
+   <div class="shead">Appearance</div>
+   ${row('Theme','Preview only: switch to compare light and dark.',`<div class="seg" role="group">${['system','light','dark'].map(t=>`<button data-action="theme" data-v="${t}" aria-pressed="${S.theme===t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>`)}
+  </div></div>`;
+}
+
+/* ---------- flyouts ---------- */
+function renderFlyout(){
+  const host=$('#flyout');
+  if(S.jobsOpen){
+    const act=jobs.filter(j=>j.state!=='done'), done=jobs.filter(j=>j.state==='done');
+    host.innerHTML=`<div class="flyout" role="dialog" aria-label="Jobs"><div class="flyhead"><h2>Jobs</h2><button class="iconbtn" data-action="toggle-jobs" aria-label="Close">${ic('x')}</button></div>
+     <div class="flybody">${act.length?`<div class="sectionlabel">Running</div>${act.map(jobCard).join('')}`:`<div class="qempty">Nothing running. Select recordings on Footage and choose Make highlights.</div>`}
+     ${done.length?`<div class="sectionlabel">Finished</div>${done.map(jobCard).join('')}`:''}</div></div>`;
+  } else if(S.detail){
+    const c=clipOf(S.detail); if(!c){S.detail=null;host.innerHTML='';return}
+    const r=recOf(c.rec), q=S.queue.includes(c.id);
+    const yt=(label,val,k)=>`<div class="yt-row"><div><small>${label}</small><p>${val}</p></div><button class="iconbtn" data-action="copy" data-k="${k}" aria-label="Copy ${label}">${ic('copy')}</button></div>`;
+    host.innerHTML=`<div class="flyout" role="dialog" aria-label="${c.title}"><div class="flyhead"><h2>${c.title}</h2><button class="iconbtn" data-action="close-detail" aria-label="Close">${ic('x')}</button></div>
+     <div class="flybody"><div class="detail-player thumb" data-scrub="${c.len}">${scene(c.id,r.game)}<span class="scrub"></span><span class="scrubtime num"></span><button class="bigplay" data-action="play-clip" data-id="${c.id}" aria-label="Play">${ic('play')}</button><span class="dur num">${dur(c.len)}</span></div>
+     <div class="cmeta num" style="padding:0"><span>Score ${c.score}</span><span>#${String(c.n).padStart(2,'0')} of ${r.clips}</span><span>${r.game}</span></div>
+     <div class="meters">${['Hook','Action','Payoff'].map((l,i)=>`<div class="meter">${l} <span class="num">${c.parts[i]}</span><div><i style="width:${c.parts[i]}%"></i></div></div>`).join('')}</div>
+     <div class="sectionlabel">For YouTube</div>
+     <div class="yt">${yt('Title',c.title,'title')}${yt('Description',c.desc,'desc')}${yt('Hashtags',c.tags,'tags')}${yt('Hook idea',c.hook,'hook')}</div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ${q?'':'primary'}" data-action="${q?'q-remove':'add-one'}" data-id="${c.id}">${q?ic('x')+'Remove from queue':ic('plus')+'Add to merge queue'}</button><button class="btn ghost" data-action="explorer">${ic('folder')}Show in folder</button><button class="btn ghost danger" data-action="del-one" data-id="${c.id}">${ic('trash')}Delete</button></div>
+     </div></div>`;
+  } else host.innerHTML='';
+}
+function jobCard(j){
+  if(j.kind==='merge'){
+    const si=Math.min(MSTEPS.length-1,Math.floor(j.prog*MSTEPS.length));
+    return `<div class="job"><div class="top">${j.state==='done'?ic('check'):ic('loader','spin')}<div class="grow"><b>Merge: ${j.name}</b><span>${j.count} shorts, ${j.fmt==='short'?'Short 9:16':'Long 16:9'}</span></div></div>
+     ${j.state==='done'?`<div class="report">Saved to E:\\Merged\\${j.name}.mp4</div><div><button class="btn sm" data-action="nav" data-page="merged">Open Merged</button></div>`
+     :`<div class="steps">${MSTEPS.map((s,i)=>`<i class="${i<si?'done':i===si?'now':''}"></i>`).join('')}</div><div class="stepname"><span data-jstep="${j.id}">${MSTEPS[si]}</span><span class="num" data-jpct="${j.id}">${Math.round(j.prog*100)}%</span></div>`}</div>`;
+  }
+  const r=recOf(j.rec); const si=Math.min(STEPS.length-1,Math.floor(j.prog*STEPS.length));
+  const name=r?`${r.game}, ${when(r.ts)}`:'Recording';
+  if(j.state==='done') return `<div class="job"><div class="top"><span style="color:var(--ok)">${ic('check')}</span><div class="grow"><b>${name}</b><span>${j.model}, took ${j.took}</span></div></div><div class="report">${j.report}</div><div><button class="btn sm" data-action="nav" data-page="shorts">View shorts</button></div></div>`;
+  if(j.state==='queued') return `<div class="job"><div class="top">${ic('activity')}<div class="grow"><b>${name}</b><span>${j.model}, waiting for the current job</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div></div>`;
+  const el=Math.round((Date.now()-j.started)/1000);
+  return `<div class="job"><div class="top">${ic('loader','spin')}<div class="grow"><b>${name}</b><span>${j.model}, <span class="num" data-jel="${j.id}">${dur(el)}</span> elapsed</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div>
+   <div class="steps" data-jsteps="${j.id}">${STEPS.map((s,i)=>`<i class="${i<si?'done':i===si?'now':''}"></i>`).join('')}</div>
+   <div class="stepname"><span data-jstep="${j.id}">Step ${si+1} of ${STEPS.length}: ${STEPS[si]}</span><span class="num" data-jpct="${j.id}">${Math.round(j.prog*100)}%</span></div></div>`;
+}
+
+/* ---------- dialogs & toast ---------- */
+const dlg=$('#dlg');
+function openDialog(html,cls=''){dlg.className=cls;dlg.innerHTML=html;try{dlg.showModal()}catch(_){dlg.setAttribute('open','')}}
+function closeDialog(){try{dlg.close()}catch(_){dlg.removeAttribute('open')}}
+let toastT;
+function toast(msg,sub,action){
+  clearTimeout(toastT);
+  $('#toastHost').innerHTML=`<div class="toast" role="status"><div>${msg}${sub?`<small>${sub}</small>`:''}</div>${action?`<button class="btn" data-action="${action[1]}" data-page="${action[2]||''}">${action[0]}</button>`:''}<button class="btn" data-action="toast-x" aria-label="Dismiss">${ic('x')}</button></div>`;
+  toastT=setTimeout(()=>$('#toastHost').innerHTML='',6000);
+}
+function deleteDialog(kind,ids){
+  let rows,title,body,warn='';
+  if(kind==='footage'){
+    const rs=ids.map(recOf); const size=rs.reduce((a,r)=>a+r.gb,0); const unp=rs.filter(r=>r.status!=='done');
+    title=`Delete ${rs.length} ${rs.length===1?'recording':'recordings'}?`;
+    body=`They go to the Recycle Bin. ${gb(size)} is freed when you empty it.`;
+    rows=rs.map(r=>`<div><span title="${r.file}">${r.file}</span><span class="num">${r.status!=='done'?'<span class="tag">No highlights yet</span> ':''}${gb(r.gb)}</span></div>`).join('');
+    if(unp.length) warn=`<div class="warnbox">${ic('warn')}<span>${unp.length} of these ${unp.length===1?'has':'have'} no highlights yet. After the Recycle Bin is emptied, nothing will be left from ${unp.length===1?'it':'them'}.</span></div>`;
+  } else if(kind==='shorts'){
+    const cs=ids.map(clipOf);
+    title=`Delete ${cs.length} ${cs.length===1?'short':'shorts'}?`; body='The video and its YouTube text file go to the Recycle Bin.';
+    rows=cs.map(c=>`<div><span>${c.title}</span><span class="num">${dur(c.len)}</span></div>`).join('');
+    const q=cs.filter(c=>S.queue.includes(c.id)).length; if(q) warn=`<div class="warnbox">${ic('warn')}<span>${q} ${q===1?'is':'are'} in the merge queue and will be removed from it.</span></div>`;
+  } else {
+    const ms=ids.map(id=>merged.find(m=>m.id===id));
+    title=`Delete "${ms[0].name}"?`; body='The merged video goes to the Recycle Bin. The shorts it was made from stay.';
+    rows=ms.map(m=>`<div><span>${m.name}.mp4</span><span class="num">${gb(m.gb)}</span></div>`).join('');
+  }
+  openDialog(`<div class="dlg-body"><h2>${title}</h2><p>${body}</p><div class="dlg-list">${rows}</div>${warn}</div>
+   <div class="dlg-foot"><button class="btn danger-solid" data-action="confirm-del" data-kind="${kind}" data-ids="${ids.join(',')}">Move to Recycle Bin</button><button class="btn" data-action="dlg-close" autofocus>Cancel</button></div>`);
+}
+function previewDialog(){
+  const items=S.queue.map(clipOf); let t=0;
+  const rows=items.map((c,i)=>{const keep=Math.round(c.len*(.55+((c.score%7)/30)));const lead=Math.round((c.len-keep)*.4);const r=`<tr><td class="num">${i+1}</td><td>${c.title}</td><td class="num">${dur(lead)} to ${dur(lead+keep)}</td><td class="r num">${dur(keep)}</td><td class="num">${dur(t)}</td></tr>`;t+=keep;return r}).join('');
+  openDialog(`<div class="dlg-body plan"><h2>Preview cuts</h2><p>What the merge will keep from each short, cut to the beat of the music. Nothing is encoded yet.</p>
+   <div class="tablewrap"><table><thead><tr><th>#</th><th>Short</th><th>Keeps</th><th class="r">Length</th><th>Starts at</th></tr></thead><tbody>${rows}</tbody></table></div>
+   <p class="num">Final length about <b>${dur(t)}</b>, ${S.fmt==='short'?'Short 9:16':'Long 16:9'}${S.hq?', 1440p':''}.</p></div>
+   <div class="dlg-foot"><button class="btn primary" data-action="merge">Merge</button><button class="btn" data-action="dlg-close">Close</button></div>`);
+}
+function playerDialog(name,key,game,len,portrait){
+  openDialog(`<div class="stage ${portrait?'portrait':''}"><div class="thumb ${portrait?'portrait':''}" style="${portrait?'':'position:absolute;inset:0;border-radius:0;aspect-ratio:auto'}">${scene(key,game,portrait)}<button class="bigplay" aria-label="Play">${ic('play')}</button></div></div>
+   <div class="pctl"><button class="iconbtn" aria-label="Play">${ic('play')}</button><span class="num" style="font-size:12px">0:${String(Math.round(len*.22)).padStart(2,'0')}</span><span class="track"><i></i></span><span class="num" style="font-size:12px">${dur(len)}</span><b style="font-size:13px;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</b><button class="iconbtn" data-action="dlg-close" aria-label="Close">${ic('x')}</button></div>`,'player');
+}
+
+/* ---------- jobs simulation (mockup only) ---------- */
+function startNext(){
+  if(jobs.some(j=>j.state==='running'))return;
+  const n=jobs.find(j=>j.state==='queued'); if(!n)return;
+  n.state='running'; n.started=Date.now(); n.prog=0; if(n.rec){const r=recOf(n.rec); r.status='processing'; r.prog=0}
+}
+function finishHl(j){
+  const r=recOf(j.rec); const k=3+(seedOf(r.id)%3); j.state='done'; j.prog=1; j.took=dur((Date.now()-j.started)/1000);
+  const names=['Opening pick','Clutch to close the round','Trade into a double','Last-second save','Clean spray transfer'];
+  for(let i=1;i<=k;i++) clips.push(C(r.id,i,names[i-1],90-i*7,18+((i*13)%20),[80,75,78],0,'—','Found by the highlight maker.','#gaming'));
+  r.status='done'; r.clips=k; delete r.prog;
+  j.report=`${k} shorts. Best: "${names[0]}" (${90-7}).`;
+  toast(`${r.game}: ${k} shorts ready`,when(r.ts),['View shorts','nav','shorts']);
+}
+setInterval(()=>{
+  let changed=false;
+  for(const j of jobs){ if(j.state!=='running')continue;
+    j.prog=Math.min(1,j.prog+(j.kind==='merge'?.06:.012));
+    if(j.rec){const r=recOf(j.rec); if(r) r.prog=j.prog}
+    if(j.prog>=1){ if(j.kind==='merge'){j.state='done';merged.unshift(j.result);toast(`Merged "${j.name}"`,'Saved to E:\\Merged',['Open Merged','nav','merged'])} else finishHl(j); changed=true; startNext(); }
+  }
+  if(changed){render();return}
+  // patch progress in place so hover and scroll stay put
+  for(const j of jobs){ if(j.state!=='running')continue;
+    if(j.rec){document.querySelectorAll(`[data-prog="${j.rec}"]`).forEach(e=>e.style.width=j.prog*100+'%');document.querySelectorAll(`[data-prog-txt="${j.rec}"]`).forEach(e=>e.textContent=Math.round(j.prog*100)+'%')}
+    const steps=j.kind==='merge'?MSTEPS:STEPS, si=Math.min(steps.length-1,Math.floor(j.prog*steps.length));
+    document.querySelectorAll(`[data-jpct="${j.id}"]`).forEach(e=>e.textContent=Math.round(j.prog*100)+'%');
+    document.querySelectorAll(`[data-jstep="${j.id}"]`).forEach(e=>e.textContent=j.kind==='merge'?steps[si]:`Step ${si+1} of ${steps.length}: ${steps[si]}`);
+    document.querySelectorAll(`[data-jsteps="${j.id}"] i`).forEach((e,i)=>e.className=i<si?'done':i===si?'now':'');
+    document.querySelectorAll(`[data-jel="${j.id}"]`).forEach(e=>e.textContent=dur((Date.now()-j.started)/1000));
+  }
+},1000);
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-action]'); if(!t)return;
+  const a=t.dataset.action, id=t.dataset.id, kind=t.dataset.kind;
+  switch(a){
+   case 'nav': S.page=t.dataset.page; S.q=''; S.detail=null; S.jobsOpen=false; if(S.page==='shorts')S.queueOpen=true; $('#toastHost').innerHTML=''; closeDialog(); render(); $('#main').scrollTop=0; break;
+   case 'toggle-queue': S.queueOpen=!S.queueOpen; render(); break;
+   case 'toggle-jobs': S.jobsOpen=!S.jobsOpen; S.detail=null; render(); break;
+   case 'view': S.view=t.dataset.view; render(); break;
+   case 'collapse': {const g=t.dataset.g; S.collapsed.has(g)?S.collapsed.delete(g):S.collapsed.add(g); render(); break}
+   case 'check': {e.stopPropagation(); const s=S.sel[kind]; s.has(id)?s.delete(id):s.add(id); render(); break}
+   case 'card': {const r=recOf(id); if(!selectable(r)){toast(r.status==='recording'?'This file is still being recorded':'This recording is being processed','Wait for it to finish before selecting it.');break} const s=S.sel.footage; s.has(id)?s.delete(id):s.add(id); render(); break}
+   case 'open-clip': S.detail=id; S.jobsOpen=false; render(); break;
+   case 'close-detail': S.detail=null; render(); break;
+   case 'sel-group': {const rs=recs.filter(r=>r.game===t.dataset.g&&selectable(r)&&(t.dataset.mode==='all'||runnable(r))); const all=rs.every(r=>S.sel.footage.has(r.id)); rs.forEach(r=>all?S.sel.footage.delete(r.id):S.sel.footage.add(r.id)); render(); break}
+   case 'sel-rec': {const cs=clips.filter(c=>c.rec===t.dataset.rec); const all=cs.every(c=>S.sel.shorts.has(c.id)); cs.forEach(c=>all?S.sel.shorts.delete(c.id):S.sel.shorts.add(c.id)); render(); break}
+   case 'clear': S.sel[kind].clear(); render(); break;
+   case 'make': {
+     const rs=[...S.sel.footage].map(recOf).filter(runnable);
+     rs.forEach(r=>{r.status='queued'; jobs.unshift({id:'j'+Math.random().toString(36).slice(2,7),kind:'hl',rec:r.id,model:r.game==='Valorant'?'Sonnet':'Opus (default)',prog:0,state:'queued'})});
+     S.sel.footage.clear(); startNext(); S.jobsOpen=true; S.detail=null; render();
+     toast(`Started ${rs.length} highlight ${rs.length===1?'job':'jobs'}`,'Each recording gets its own agent, one at a time.'); break}
+   case 'cancel': {const j=jobs.find(x=>x.id===id); const r=j.rec&&recOf(j.rec); jobs=jobs.filter(x=>x!==j); if(r){r.status=j.state==='running'?'failed':'new'; if(j.state==='running')r.reason='Cancelled from Studio'; delete r.prog} startNext(); render(); toast('Job cancelled',j.state==='running'?'The recording is marked failed. Select it and choose Make highlights to retry.':''); break}
+   case 'del-footage': deleteDialog('footage',[...S.sel.footage]); break;
+   case 'del-shorts': deleteDialog('shorts',[...S.sel.shorts]); break;
+   case 'del-one': deleteDialog('shorts',[id]); break;
+   case 'del-merged': deleteDialog('merged',[id]); break;
+   case 'confirm-del': {
+     const ids=t.dataset.ids.split(','); closeDialog();
+     if(kind==='footage'){const size=ids.reduce((a,i)=>a+recOf(i).gb,0); recs=recs.filter(r=>!ids.includes(r.id)); ids.forEach(i=>S.sel.footage.delete(i)); toast(`Moved ${ids.length} ${ids.length===1?'recording':'recordings'} to the Recycle Bin`,`${gb(size)} is freed when you empty the Recycle Bin.`)}
+     else if(kind==='shorts'){clips=clips.filter(c=>!ids.includes(c.id)); S.queue=S.queue.filter(q=>!ids.includes(q)); ids.forEach(i=>S.sel.shorts.delete(i)); if(ids.includes(S.detail))S.detail=null; toast(`Moved ${ids.length} ${ids.length===1?'short':'shorts'} to the Recycle Bin`)}
+     else {merged=merged.filter(m=>!ids.includes(m.id)); toast('Moved the merged video to the Recycle Bin')}
+     render(); break}
+   case 'dlg-close': closeDialog(); break;
+   case 'add-queue': {const add=[...S.sel.shorts].filter(i=>!S.queue.includes(i)); S.queue.push(...add); S.sel.shorts.clear(); S.queueOpen=true; render(); toast(`Added ${add.length} to the merge queue`,'Drag them in the queue to change the order.'); break}
+   case 'add-one': if(!S.queue.includes(id))S.queue.push(id); S.queueOpen=true; render(); break;
+   case 'q-remove': S.queue=S.queue.filter(q=>q!==id); render(); break;
+   case 'q-clear': S.queue=[]; render(); break;
+   case 'fmt': S.fmt=t.dataset.v; render(); break;
+   case 'hq': S.hq=!S.hq; render(); break;
+   case 'music': toast('Opens a Windows file picker in the app','Pick one song or a folder of songs.'); break;
+   case 'preview': previewDialog(); break;
+   case 'merge': {
+     closeDialog(); const items=S.queue.map(clipOf); const name=S.outName||'Untitled merge';
+     const total=items.reduce((a,c)=>a+c.len,0)*.7;
+     const res={id:'m'+Date.now(),name,fmt:S.fmt,len:Math.min(S.fmt==='short'?180:9999,total),res:S.fmt==='short'?(S.hq?'1440×2560':'1080×1920'):(S.hq?'2560×1440':'1920×1080'),tracks:S.mergeMusic==='any'?tracks.filter(t=>t.credit!=='missing').slice(0,1).map(t=>t.id):[S.mergeMusic],date:when(new Date().toISOString().slice(0,16)),gb:.12,clips:[...S.queue],game:recOf(items[0].rec).game};
+     items.forEach(c=>c.used++);
+     jobs.unshift({id:'jm'+Date.now(),kind:'merge',name,count:items.length,fmt:S.fmt,prog:0,state:'running',started:Date.now(),result:res});
+     S.queue=[]; S.jobsOpen=true; S.detail=null; render(); break}
+   case 'remerge': {const m=merged.find(x=>x.id===id); S.queue=m.clips.filter(clipOf); S.fmt=m.fmt; S.outName=m.name+' v2'; S.page='shorts'; S.queueOpen=true; render(); toast(`Loaded ${S.queue.length} shorts from "${m.name}" into the queue`,'Change the order or settings, then merge.'); break}
+   case 'play-merged': {const m=merged.find(x=>x.id===id); playerDialog(m.name,m.id,m.game,m.len,m.fmt==='short'); break}
+   case 'play-clip': {const c=clipOf(id); playerDialog(c.title,c.id,recOf(c.rec).game,c.len,false); break}
+   case 'explorer': toast('Opens the folder in File Explorer','In the app this selects the file in Explorer.'); break;
+   case 'copy': {const c=clipOf(S.detail); const v={title:c.title,desc:c.desc,tags:c.tags,hook:c.hook}[t.dataset.k];
+     try{navigator.clipboard.writeText(v).then(()=>toast('Copied'),()=>toast('Copy blocked here','It works in the app.'))}catch(_){toast('Copy blocked here','It works in the app.')} break}
+   case 'theme': S.theme=t.dataset.v; if(S.theme==='system')document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',S.theme); render(); break;
+   case 'music-tab': S.musicTab=t.dataset.v; render(); break;
+   case 'watch': S.watch=!S.watch; render(); break;
+   case 'track-check': {const s=S.trackSel; s.has(id)?s.delete(id):s.add(id); render(); break}
+   case 'clear-tracks': S.trackSel.clear(); render(); break;
+   case 'del-tracks': {const ts=[...S.trackSel].map(trackOf); openDialog(`<div class="dlg-body"><h2>Delete ${ts.length} ${ts.length===1?'track':'tracks'}?</h2><p>The files go to the Recycle Bin. Videos you already merged keep their music.</p><div class="dlg-list">${ts.map(x=>`<div><span>${x.file}</span><span class="num">${dur(x.len)}</span></div>`).join('')}</div></div>
+     <div class="dlg-foot"><button class="btn danger-solid" data-action="confirm-del-tracks">Move to Recycle Bin</button><button class="btn" data-action="dlg-close">Cancel</button></div>`); break}
+   case 'confirm-del-tracks': {const n=S.trackSel.size; tracks=tracks.filter(x=>!S.trackSel.has(x.id)); if(S.trackSel.has(S.mergeMusic))S.mergeMusic='any'; S.trackSel.clear(); closeDialog(); render(); toast(`Moved ${n} ${n===1?'track':'tracks'} to the Recycle Bin`); break}
+   case 'play-track': S.playing=S.playing===id?null:id; render(); break;
+   case 'get-ncs': {const n=ncsCat.find(x=>x.id===id); S.waiting.add(id); render(); toast(`Opened "${n.title}" on ncs.io`,'Click Download on that page. Studio adds the file when it lands in Downloads.');
+     setTimeout(()=>{S.waiting.delete(id); tracks.push({id:'t'+Date.now(),title:n.title,artist:n.artist,source:'NCS',len:n.len,credit:'ready',text:ncsCredit(n.artist,n.title),file:`${n.artist} - ${n.title}.mp3`}); render(); toast(`Added "${n.title}" to your music`,'Credit line filled in from ncs.io.',['Open library','music-lib'])},3500); break}
+   case 'music-lib': S.page='music'; S.musicTab='library'; $('#toastHost').innerHTML=''; render(); break;
+   case 'goto-ncs': S.musicTab='ncs'; S.ncsQ=t.dataset.q; render(); break;
+   case 'lookup': S.link=($('#linkIn')||{}).value||''; if(!S.link.trim()){toast('Paste a video link first');break} S.lookup=true; render(); break;
+   case 'open-ytal': toast('Opens YouTube Studio\'s Audio Library in your browser','Tracks you download there are added here automatically.'); break;
+   case 'import': {tracks.push({id:'t'+Date.now(),title:'my_track',artist:'',source:'Imported file',len:200,credit:'missing',text:'',file:'my_track.mp3'}); S.musicTab='library'; render(); creditDialog(tracks[tracks.length-1].id); break}
+   case 'credit': creditDialog(id); break;
+   case 'credit-save': {const x=trackOf(id); x.title=$('#cTitle').value; x.artist=$('#cArtist').value; x.source=$('#cSource').value; x.text=$('#cText').value.trim();
+     x.credit=$('#cNone').checked?'none':x.text?'ready':'missing'; closeDialog(); render(); toast(x.credit==='missing'?'Saved without a credit line':'Credit saved',x.credit==='missing'?'This track can\'t be used in merges until it has one.':''); break}
+   case 'desc': descDialog(id); break;
+   case 'copy-desc': {const v=$('#descTxt').value; try{navigator.clipboard.writeText(v).then(()=>toast('Description copied'),()=>{$('#descTxt').select();toast('Copy blocked here','The text is selected. Press Ctrl+C.')})}catch(_){$('#descTxt').select();toast('Copy blocked here','The text is selected. Press Ctrl+C.')} break}
+   case 'toast-x': $('#toastHost').innerHTML=''; break;
+  }
+});
+document.addEventListener('dblclick',e=>{
+  const c=e.target.closest('[data-kind="footage"].card'); if(c){const r=recOf(c.dataset.id); playerDialog(r.file,r.id,r.game,r.dur,false)}
+  const s=e.target.closest('[data-kind="shorts"].card'); if(s){const x=clipOf(s.dataset.id); playerDialog(x.title,x.id,recOf(x.rec).game,x.len,false)}
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='q'){S.q=e.target.value; const pos=e.target.selectionStart; render(); const q=$('#q'); q.focus(); q.setSelectionRange(pos,pos)}
+  if(e.target.id==='outName') S.outName=e.target.value;
+  if(e.target.id==='linkIn') S.link=e.target.value;
+  if(e.target.id==='ncsQ'){S.ncsQ=e.target.value; const pos=e.target.selectionStart; render(); const q=$('#ncsQ'); q.focus(); q.setSelectionRange(pos,pos)}
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='statusSel'){S.status=e.target.value;render()}
+  if(e.target.id==='sortSel'){S.sort=e.target.value;render()}
+  if(e.target.id==='minScore'){S.minScore=+e.target.value;render()}
+  if(e.target.id==='styleSel'){S.style=e.target.value}
+  if(e.target.id==='musicSel'){S.mergeMusic=e.target.value}
+  if(e.target.id==='genreSel'){S.genre=e.target.value;render()}
+});
+/* hover scrub: pan the frame and show the timestamp under the cursor */
+document.addEventListener('mousemove',e=>{
+  const th=e.target.closest('.thumb[data-scrub]'); if(!th)return;
+  const b=th.getBoundingClientRect(), f=Math.max(0,Math.min(1,(e.clientX-b.left)/b.width));
+  const g=th.querySelector('.pan'); if(g) g.style.transform=`translateX(${-(+g.dataset.span)*f}px)`;
+  const sc=th.querySelector('.scrub'); if(sc) sc.style.left=(f*100)+'%';
+  const st=th.querySelector('.scrubtime'); if(st) st.textContent=dur(+th.dataset.scrub*f);
+});
+document.addEventListener('keydown',e=>{
+  if(e.target.matches('input,select,textarea'))return;
+  if(e.key==='Escape'){ if(S.detail||S.jobsOpen){S.detail=null;S.jobsOpen=false;render()} }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'&&(S.page==='footage'||S.page==='shorts')){
+    e.preventDefault(); if(S.page==='footage') filteredRecs().filter(selectable).forEach(r=>S.sel.footage.add(r.id)); else clips.forEach(c=>S.sel.shorts.add(c.id)); render(); }
+  if(e.key==='Delete'){ if(S.page==='footage'&&S.sel.footage.size)deleteDialog('footage',[...S.sel.footage]); if(S.page==='shorts'&&S.sel.shorts.size)deleteDialog('shorts',[...S.sel.shorts]); }
+});
+
+/* opening state: two recordings selected so the command bar is visible */
+S.sel.footage.add('v2'); S.sel.footage.add('a3');
+render();
+})();
+</script>

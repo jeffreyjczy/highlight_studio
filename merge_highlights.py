@@ -212,10 +212,28 @@ def beat_grid(m, music_start, total_needed):
 
 
 # ---------------------------------------------------------------- clips and actions
+def sibling_meta(clip):
+    """A clip passed by path still gets its clips.json entry (scores, segments, events, layout)."""
+    meta = clip.parent / "clips.json"
+    if not meta.exists():
+        return None, None
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None, None
+    for c in data.get("clips", []):
+        if c.get("file") == clip.name and ("segments" in c or "score" in c):
+            return c, data
+    return None, None
+
+
 def load_items(a):
     items = []
     for c in a.clips:
-        items.append({"file": Path(c), "meta": None})
+        f = Path(c)
+        meta, data = sibling_meta(f)
+        items.append({"file": f, "meta": meta, "source": (data or {}).get("source"),
+                      "game": (data or {}).get("game")})
     if a.folder:
         folder = Path(a.folder)
         meta = folder / "clips.json"
@@ -510,6 +528,7 @@ def main():
     ap.add_argument("--game-volume", type=float, default=1.0)
     ap.add_argument("--lufs", type=float, default=-14.0)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--plan-json", help="with --dry-run: also write the edit plan as JSON to this file")
     a = ap.parse_args()
 
     if a.format == "short":
@@ -579,6 +598,14 @@ def main():
         beat = f" cut on beat {it['cut_on_beat']:.2f}" if it.get("cut_on_beat") is not None else ""
         print(f"  {it['start']:6.2f}s  [{tr}]  {it['file'].name}  in {it['in']:.2f} out {it['out']:.2f}{beat}")
     if a.dry_run:
+        if a.plan_json:
+            Path(a.plan_json).write_text(json.dumps({
+                "length": round(total, 2), "order": order, "music": str(music) if music else None,
+                "bpm": round(minfo["bpm"], 1) if minfo else None,
+                "clips": [{"file": str(it["file"]), "starts_at": round(it["start"], 2), "in": round(it["in"], 2),
+                           "out": round(it["out"], 2), "transition_in": it["transition"],
+                           "actions_from": it["actions_from"]} for it in items]},
+                indent=1, ensure_ascii=False), encoding="utf-8")
         return
 
     cmd = [FFMPEG, "-v", "error", "-y"]

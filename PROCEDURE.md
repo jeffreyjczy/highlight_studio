@@ -33,7 +33,7 @@ Recording sources:
 # Hard rules (never break these)
 
 1. **The ledger decides what is processed.** Run `ledger.py scan` first. Only `claim` recordings whose status is `new`. Never process `recording`, `processing`, `done`, `changed`, `too_small` or `original_deleted` ones. Never edit `_ledger.json` by hand.
-2. **Never modify, move or delete anything in `E:\Recordings` yourself.** The only allowed deletion of originals is `ledger.py cleanup --confirm ...`. That command refuses anything that isn't finished, unchanged, closed and highlighted.
+2. **Never modify, move or delete anything in `E:\Recordings` yourself.** The only allowed deletion of originals is `ledger.py cleanup --confirm ...`. That command refuses anything that isn't finished, unchanged, closed and highlighted. (The user can also move files to the Recycle Bin themselves from Highlight Studio, which runs `ledger.py trash`. You never run `trash`.)
 3. **Cleanup only runs with the user's confirmation.** Run `ledger.py cleanup-plan` and report the list (files, sizes, clip counts, GB freed). Then stop and return. Only run `ledger.py cleanup --confirm <paths>` if your task prompt states the user confirmed deleting those specific files. Never use `--all` unless the user explicitly said "all".
 4. **Never delete or overwrite clips in `E:\Highlights`.** The user reviews and deletes clips themselves. If a file name already exists, add a suffix (`render_clip.py` does). Exception: a short **you rendered in this same run** may be re-rendered (`--redo`) to fix a flaw you spotted while verifying it.
 5. **Don't copy whole recordings anywhere.** Read the source in place from E:. Temporary files on C: must stay small.

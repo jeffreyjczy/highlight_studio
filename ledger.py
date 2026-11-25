@@ -15,8 +15,11 @@ Usage (python ledger.py <command> ...):
   cleanup-plan [--json]               List originals that are safe to delete
   cleanup --confirm <recording>...    Delete those originals (re-checked first)
   cleanup --confirm --all             Delete every original in the cleanup plan
+  trash --confirm <file>...           Move files to the Recycle Bin (Highlight Studio's Delete);
+                                      originals in the ledger become "original_deleted"
 """
 import ctypes
+from ctypes import wintypes
 import json
 import os
 import sys
@@ -62,6 +65,57 @@ def is_locked(path):
     return False
 
 
+class _SHFILEOPSTRUCTW(ctypes.Structure):
+    _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
+                ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+
+def recycle(path):
+    """Move one file to the Recycle Bin. Returns True if the file is gone afterwards.
+
+    FOF_WANTNUKEWARNING makes Windows ask first if a file is too big for the Recycle Bin
+    and would be deleted permanently instead."""
+    FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_WANTNUKEWARNING = \
+        3, 0x4, 0x10, 0x40, 0x400, 0x4000
+    p = str(Path(path).resolve())
+    op = _SHFILEOPSTRUCTW(None, FO_DELETE, p + "\0", None,
+                          FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING,
+                          False, None, None)
+    ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    return not Path(p).exists()
+
+
+def trash_files(paths):
+    """Recycle files; originals known to the ledger are marked original_deleted.
+
+    Refuses recordings that are being processed or still open (being recorded).
+    Returns [{path, ok, reason, size}]."""
+    ledger = load()
+    results = []
+    for raw in paths:
+        p = Path(raw)
+        if not p.exists():
+            results.append({"path": str(p), "ok": False, "reason": "not found", "size": 0})
+            continue
+        size = p.stat().st_size
+        e = ledger["recordings"].get(key_of(p))
+        if e and e["status"] == "processing":
+            results.append({"path": str(p), "ok": False, "reason": "being processed", "size": size})
+            continue
+        if p.suffix.lower() in VIDEO_EXTS and is_locked(p):
+            results.append({"path": str(p), "ok": False, "reason": "open in another program", "size": size})
+            continue
+        if not recycle(p):
+            results.append({"path": str(p), "ok": False, "reason": "Windows did not move it", "size": size})
+            continue
+        if e:
+            e.update(status="original_deleted", deleted_at=now_iso(), deleted_via="recycle bin")
+            save(ledger)
+        results.append({"path": str(p), "ok": True, "reason": "", "size": size})
+    return results
+
+
 def load():
     if LEDGER_PATH.exists():
         return json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
@@ -88,6 +142,8 @@ def classify(path, entry):
     fp = fingerprint(path)
     if entry:
         status = entry["status"]
+        if status == "original_deleted":
+            status = "done"  # restored from the Recycle Bin: still has its highlights
         if status in ("processing", "done") and entry.get("fingerprint") != fp:
             return "changed"  # file differs from what was processed: never auto-delete
         if status == "processing":
@@ -250,9 +306,22 @@ def cmd_cleanup(args):
     print(f"\nfreed {freed:.2f} GB")
 
 
+def cmd_trash(args):
+    if "--confirm" not in args:
+        sys.exit("ERROR: trash moves files to the Recycle Bin; pass --confirm")
+    targets = [a for a in args if not a.startswith("--")]
+    if not targets:
+        sys.exit("ERROR: name the files to move to the Recycle Bin")
+    freed = 0
+    for r in trash_files(targets):
+        print(f"{'RECYCLED' if r['ok'] else 'REFUSED '}  {r['path']}" + ("" if r["ok"] else f"  ({r['reason']})"))
+        freed += r["size"] if r["ok"] else 0
+    print(f"\n{freed / 1e9:.2f} GB moved to the Recycle Bin (freed when it is emptied)")
+
+
 COMMANDS = {"scan": cmd_scan, "claim": cmd_claim, "complete": cmd_complete,
             "fail": cmd_fail, "reset": cmd_reset,
-            "cleanup-plan": cmd_cleanup_plan, "cleanup": cmd_cleanup}
+            "cleanup-plan": cmd_cleanup_plan, "cleanup": cmd_cleanup, "trash": cmd_trash}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
