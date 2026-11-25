@@ -397,7 +397,9 @@ function pageMerged() {
     <div class="thumb ${m.fmt === 'short' ? 'portrait' : ''}" data-action="play-merged" data-id="${m.id}"><img loading="lazy" src="${thumbUrl(m.path, 0.3, m.fmt === 'short' ? 360 : 640)}" alt=""><span class="dur num">${dur(m.len)}</span></div>
     <div class="info"><h3 title="${esc(m.name)}">${esc(m.name)}</h3>
      <dl class="facts num"><dt>Format</dt><dd>${m.fmt === 'short' ? 'Short, 9:16' : 'Long, 16:9'}, ${m.w}×${m.h}</dd><dt>Music</dt><dd title="${esc(m.music || '')}">${t ? esc(trackLabel(t)) : m.music ? esc(base(m.music)) : 'None'}</dd><dt>Made</dt><dd>${esc(when(m.ts))}</dd><dt>Size</dt><dd>${size(m.size)}</dd></dl>
-     ${m.clips.length ? `<div class="chips">${m.clips.map(p => { const c = clipOfPath(p); return `<span class="chip" title="${esc(p)}">${esc(c ? c.title : base(p).replace(/\.mp4$/i, '') + (c ? '' : ''))}</span>`; }).join('')}</div>` : ''}
+     ${m.clips.length ? `<div class="clipspop"><button class="chip clipsbtn" aria-haspopup="true">${ic('scissors')}Made from ${plural(m.clips.length, 'short')}</button>
+       <div class="pop" role="tooltip"><div class="pop-in"><ol>${m.clips.map(p => { const c = clipOfPath(p);
+         return `<li title="${esc(p)}"><span>${esc(c ? c.title : base(p).replace(/\.mp4$/i, ''))}</span>${c ? `<small>${esc(c.game)}${c.score != null ? `, score ${c.score}` : ''}</small>` : '<small>Deleted short</small>'}</li>`; }).join('')}</ol></div></div></div>` : ''}
      <div class="mactions"><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button>
       <button class="btn sm ghost" data-action="reveal" data-p="${esc(m.path)}">${ic('folder')}Show in folder</button>
       ${m.clips.length ? `<button class="btn sm ghost" data-action="remerge" data-id="${m.id}">${ic('retry')}Merge again</button>` : ''}

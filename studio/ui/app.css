@@ -267,6 +267,18 @@ body.resizing iframe,body.resizing video{pointer-events:none}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 .chip{font-size:11px;line-height:18px;padding:0 7px;border-radius:9px;background:var(--muted-soft);color:var(--fg2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mactions{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto}
+/* "Made from N shorts": hover or focus shows the list in a scrollable popover */
+.clipspop{position:relative;align-self:flex-start}
+.clipsbtn{display:inline-flex;align-items:center;gap:5px;border:0;cursor:default;font-size:12px;line-height:22px;padding:0 9px}
+.clipsbtn .ic{width:12px;height:12px}
+.clipspop .pop{display:none;position:absolute;left:0;top:100%;padding-top:6px;z-index:30;width:300px;max-width:calc(100vw - 48px)}
+.clipspop:hover .pop,.clipspop:focus-within .pop{display:block}
+.pop-in{max-height:220px;overflow-y:auto;background:var(--card);border:1px solid var(--stroke-strong);border-radius:var(--r-md);box-shadow:0 10px 30px var(--shadow);padding:6px}
+.pop-in ol{margin:0;padding:0 0 0 26px;font-size:12px}
+.pop-in li{padding:5px 6px 5px 2px;border-bottom:1px solid var(--stroke);color:var(--fg3)}
+.pop-in li:last-child{border-bottom:0}
+.pop-in li span{display:block;color:var(--fg);font-size:13px;overflow-wrap:anywhere}
+.pop-in li small{font-size:11px}
 
 .settings{max-width:780px;display:grid;gap:4px}
 .srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px 16px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-sm)}
