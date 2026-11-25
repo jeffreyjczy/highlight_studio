@@ -71,7 +71,7 @@ def music_root():
 
 
 def allowed_roots():
-    return [RECORDINGS_ROOT, HIGHLIGHTS_ROOT, merged_root(), music_root()]
+    return [RECORDINGS_ROOT, HIGHLIGHTS_ROOT, merged_root(), music_root(), DATA / "thumbs-work"]
 
 
 def is_inside(path, roots=None):

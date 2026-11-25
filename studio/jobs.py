@@ -17,6 +17,7 @@ HISTORY_MAX = 100
 AGENT_TOOLS = "PowerShell,Bash,Read,Write,Edit,Glob,Grep"  # the highlight-maker's own tool list
 HL_STEPS = ["Claim", "Probe", "Analyze", "Plan clips", "Render", "Check", "Finish"]
 MERGE_STEPS = ["Read clips", "Beat-sync", "Plan cuts", "Encode", "Finish"]
+THUMB_STEPS = ["Grab frames", "Claude picks", "Render"]
 LOGIN_HINT = "Claude Code isn't logged in. Open a terminal, run `claude`, log in, then try again."
 
 
@@ -89,6 +90,16 @@ class Jobs:
         with self.lock:
             j = self._new("merge", path=str(out), title=name, steps=MERGE_STEPS, clips=clips, music=music)
             j["_args"] = args
+            self.jobs.insert(0, j)
+        self._save()
+        return j["id"]
+
+    def add_thumb(self, merged, title):
+        with self.lock:
+            if any(j["kind"] == "thumb" and j["path"].lower() == str(merged).lower()
+                   and j["state"] in ("queued", "running") for j in self.jobs):
+                return None
+            j = self._new("thumb", path=str(merged), title=title, steps=THUMB_STEPS)
             self.jobs.insert(0, j)
         self._save()
         return j["id"]
@@ -190,12 +201,13 @@ class Jobs:
                 # highlight runs obey the limit; one merge and one upload can run beside them
                 nxt = next((x for x in reversed(self.jobs) if x["state"] == "queued" and
                             ((x["kind"] == "highlight" and hl_running < limit) or
-                             (x["kind"] in ("merge", "upload") and x["kind"] not in busy))), None)
+                             (x["kind"] in ("merge", "upload", "thumb") and x["kind"] not in busy))), None)
                 if not nxt:
                     continue
                 nxt.update(state="running", started=time.time(), activity="Starting")
             self._save()
-            target = {"highlight": self._run_highlight, "merge": self._run_merge, "upload": self._run_upload}[nxt["kind"]]
+            target = {"highlight": self._run_highlight, "merge": self._run_merge, "upload": self._run_upload,
+                      "thumb": self._run_thumb}[nxt["kind"]]
             threading.Thread(target=self._guard, args=(target, nxt), daemon=True).start()
 
     def _guard(self, fn, j):
@@ -315,6 +327,11 @@ class Jobs:
                 j["activity"] = f"Uploading to YouTube, {f * 100:.0f}% of {src.stat().st_size / 1048576:.0f} MB"
         try:
             res = youtube.upload(src, j["meta"], progress, lambda: bool(j.get("_cancel")))
+            thumb = j["meta"].get("thumbnail")
+            if thumb and Path(thumb).exists():
+                with self.lock:
+                    j["activity"] = "Setting the thumbnail"
+                res["thumbnail"] = youtube.set_thumbnail(res["id"], thumb)
         except youtube.YTError as e:
             if j.get("_cancel"):
                 return self._finish(j, "cancelled", error="Cancelled. Nothing was published.")
@@ -332,7 +349,54 @@ class Jobs:
         self._finish(j, "done", step=1, progress=1.0, out=res["url"], studio=res["studio"], yt=res, forced_private=forced,
                      report=("YouTube kept this video Private (new API apps can only upload privately until Google "
                              "reviews them). Open it in YouTube Studio to make it public.") if forced else
-                     f"Uploaded as {res['privacy_requested']}: {res['url']}")
+                     f"Uploaded as {res['privacy_requested']}: {res['url']}"
+                     + (f" Thumbnail {res['thumbnail']}" if res.get("thumbnail") else ""))
+
+    # ------------------------------------------------------------ thumbnail
+    def _run_thumb(self, j):
+        import thumbs
+        merged = Path(j["path"])
+        if not merged.exists():
+            return self._finish(j, "failed", error="The merged video no longer exists.")
+        log = DATA / "logs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{j['id']}-thumb.log"
+        j["log"] = str(log)
+        with open(log, "w", encoding="utf-8") as lf:
+            def w(s):
+                lf.write(s or "")
+                lf.flush()
+            with self.lock:
+                j["activity"] = "Grabbing frames at the kill moments"
+            try:
+                info = thumbs.candidates(merged, w)
+            except Exception as e:
+                return self._finish(j, "failed", error=f"Couldn't grab frames: {e}")
+            if not info["candidates"]:
+                return self._finish(j, "failed", error="No usable frames in the clips.")
+            if j.get("_cancel"):
+                return self._finish(j, "cancelled", error="Cancelled")
+            with self.lock:
+                j["step"], j["activity"] = 1, f"Claude is picking from {len(info['candidates'])} frames"
+            note = ""
+            try:
+                def keep(p):
+                    with self.lock:
+                        self.procs[j["id"]] = p
+                choice = thumbs.ask_claude(info, thumbs.paths(merged)["work"], w, keep)
+            except Exception as e:
+                if j.get("_cancel"):
+                    return self._finish(j, "cancelled", error="Cancelled")
+                choice, note = thumbs.fallback(info), f" Claude wasn't available ({e}), so the best-scored frame was used."
+            old = thumbs.info(merged) or {}
+            choice["layout"] = old.get("layout", "hero")
+            with self.lock:
+                j["step"], j["activity"] = 2, "Rendering the layouts"
+            try:
+                thumbs.render(merged, choice, w)
+            except Exception as e:
+                return self._finish(j, "failed", error=f"Couldn't render the thumbnail: {e}")
+        head = choice["headline"].replace("*", "")
+        self._finish(j, "done", step=2, out=str(thumbs.paths(merged)["use"]),
+                     report=f"\"{head}\" on frame {choice['pick']}. {choice.get('why', '')}{note}")
 
     # ------------------------------------------------------------ merge
     def _run_merge(self, j):
@@ -369,6 +433,8 @@ class Jobs:
                 f.unlink(missing_ok=True)
             return self._finish(j, "cancelled", error="Cancelled")
         if p.returncode == 0 and out_path:
-            return self._finish(j, "done", step=len(MERGE_STEPS) - 1, out=out_path,
-                                report=next((t for t in reversed(tail) if t.startswith("merged")), ""))
+            self._finish(j, "done", step=len(MERGE_STEPS) - 1, out=out_path,
+                         report=next((t for t in reversed(tail) if t.startswith("merged")), ""))
+            self.add_thumb(out_path, Path(out_path).stem)  # every merge gets a thumbnail
+            return
         self._finish(j, "failed", error="\n".join(t for t in tail if t)[-600:] or f"exit code {p.returncode}")

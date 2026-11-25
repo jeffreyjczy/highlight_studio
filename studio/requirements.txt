@@ -3,3 +3,4 @@ pywebview>=6.2
 markdown-it-py>=4.0
 google-api-python-client>=2.200
 google-auth-oauthlib>=1.5
+pillow>=11  # thumbnails (make_thumbnail.py)

@@ -15,6 +15,7 @@ const P = {
  trash:'<path d="M3.5 5.5h13M8 5.5V3.8h4v1.7M5 5.5l.8 11h8.4l.8-11M8.5 8.5v5M11.5 8.5v5"/>',
  play:'<path d="M6.5 4.5v11l9-5.5z" fill="currentColor" stroke="none"/>',
  pause:'<path d="M7 4.5v11M13 4.5v11" stroke-width="2.4"/>',
+ image:'<rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.5" r="1.5"/><path d="M17.5 13l-4-4-7 7"/>',
  sparkle:'<path d="M10 2.5l1.6 4.6 4.6 1.6-4.6 1.6L10 15l-1.6-4.7-4.6-1.6 4.6-1.6z"/><path d="M15.5 13.5l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/>',
  plus:'<path d="M10 4v12M4 10h12"/>',
  folder:'<path d="M2.5 6v9a1.5 1.5 0 001.5 1.5h12a1.5 1.5 0 001.5-1.5V8a1.5 1.5 0 00-1.5-1.5H10L8.3 4.5H4A1.5 1.5 0 002.5 6z"/>',
@@ -449,7 +450,7 @@ function pageMerged() {
   h += `<div class="mgrid">${D.merged.map(m => {
     const t = trackOfPath(m.music);
     return `<article class="mcard ${m.fmt}">
-    <div class="thumb ${m.fmt === 'short' ? 'portrait' : ''}" data-action="play-merged" data-id="${m.id}"><img loading="lazy" src="${thumbUrl(m.path, 0.3, m.fmt === 'short' ? 360 : 640)}" alt=""><span class="dur num">${dur(m.len)}</span></div>
+    <div class="thumb ${m.fmt === 'short' ? 'portrait' : ''}" data-action="play-merged" data-id="${m.id}"><img loading="lazy" src="${m.thumb && m.fmt === 'long' ? thumbFile(m.thumb.path, m.thumb.v) : thumbUrl(m.path, 0.3, m.fmt === 'short' ? 360 : 640)}" alt=""><span class="dur num">${dur(m.len)}</span></div>
     <div class="info"><h3 title="${esc(m.name)}">${esc(m.name)}</h3>
      <dl class="facts num"><dt>Format</dt><dd>${m.fmt === 'short' ? 'Short, 9:16' : 'Long, 16:9'}, ${m.w}×${m.h}</dd><dt>Music</dt><dd title="${esc(m.music || '')}">${t ? esc(trackLabel(t)) : m.music ? esc(base(m.music)) : 'None'}</dd><dt>Made</dt><dd>${esc(when(m.ts))}</dd><dt>Size</dt><dd>${size(m.size)}</dd></dl>
      ${m.clips.length ? `<div class="clipspop"><button class="chip clipsbtn" aria-haspopup="true">${ic('scissors')}Made from ${plural(m.clips.length, 'short')}</button>
@@ -457,12 +458,37 @@ function pageMerged() {
          return `<li title="${esc(p)}"><span>${esc(c ? c.title : base(p).replace(/\.mp4$/i, ''))}</span>${c ? `<small>${esc(c.game)}${c.score != null ? `, score ${c.score}` : ''}</small>` : '<small>Deleted short</small>'}</li>`; }).join('')}</ol></div></div></div>` : ''}
      ${(m.youtube || []).length ? (() => { const y = m.youtube[m.youtube.length - 1];
        return `<div><button class="tpill st-done btnlike" data-action="open-url" data-url="${esc(y.studio)}" title="Open in YouTube Studio">${ic('check')}On YouTube, ${esc(y.privacy_requested === 'scheduled' ? 'scheduled' : y.privacy)}${m.youtube.length > 1 ? ` (${m.youtube.length} uploads)` : ''}</button></div>`; })() : ''}
-     <div class="mactions"><button class="btn sm primary" data-action="upload-yt" data-id="${m.id}">${ic('play')}Upload to YouTube</button><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button>
+     <div class="mactions"><button class="btn sm primary" data-action="upload-yt" data-id="${m.id}">${ic('play')}Upload to YouTube</button><button class="btn sm" data-action="play-merged" data-id="${m.id}">${ic('play')}Play</button><button class="btn sm" data-action="desc" data-id="${m.id}">${ic('copy')}YouTube description</button>${thumbBtn(m)}
       <button class="btn sm ghost" data-action="reveal" data-p="${esc(m.path)}">${ic('folder')}Show in folder</button>
       ${m.clips.length ? `<button class="btn sm ghost" data-action="remerge" data-id="${m.id}">${ic('retry')}Merge again</button>` : ''}
       <button class="btn sm ghost danger" data-action="del-merged" data-id="${m.id}">${ic('trash')}Delete</button></div></div></article>`; }).join('')}</div></div>`;
   return h;
 }
+
+/* ---------- thumbnails ---------- */
+const thumbFile = (p, v) => `${mediaUrl(p)}&v=${v || 0}`;
+function thumbJob(path) { const lp = String(path).toLowerCase(); return D.jobs.find(j => j.kind === 'thumb' && j.path.toLowerCase() === lp && (j.state === 'queued' || j.state === 'running')); }
+function thumbBtn(m) {
+  if (thumbJob(m.path)) return `<button class="btn sm" disabled>${ic('loader', 'spin')}Making thumbnail…</button>`;
+  return m.thumb ? `<button class="btn sm" data-action="thumb-open" data-id="${m.id}">${ic('image')}Thumbnail</button>`
+    : `<button class="btn sm" data-action="thumb-make" data-p="${esc(m.path)}" title="Claude picks the best frame and writes a headline">${ic('image')}Make thumbnail</button>`;
+}
+async function thumbDialog(m) {
+  const t = m.thumb; if (!t) return;
+  const cands = t.can_edit ? await API().thumb_candidates(m.path) : [];
+  S.thumbFor = m.path; S.thumbPick = t.pick;
+  const lay = (k, label) => `<button class="tlay" data-action="thumb-layout" data-v="${k}" aria-pressed="${t.layout === k}"><img src="${thumbFile(t[k + "_img"], t.v)}" alt=""><span>${label}</span></button>`;
+  openDialog(`<div class="dlg-body"><h2>Thumbnail</h2>
+    <p>${t.by === 'claude' ? 'Claude picked the frame and wrote the text' : t.by === 'you' ? 'Edited by you' : 'Picked by score (Claude wasn\'t available)'}${t.why ? `: ${esc(t.why)}` : '.'} Click a layout to use it. It is 1280×720, ready for YouTube.</p>
+    <div class="tlays">${lay('hero', 'Frame + headline')}${lay('badge', 'Frame + kill badge')}</div>
+    ${t.can_edit ? `<div class="form">
+      <div class="two"><label>Headline <small class="note">*word* is drawn in colour</small><input type="text" id="thHead" maxlength="28" value="${esc(t.headline || '')}"></label>
+      <label>Badge<input type="text" id="thBadge" maxlength="14" value="${esc(t.badge || '')}"></label></div>
+      <label>Frame</label><div class="tframes">${cands.map(c => `<button class="tframe" data-action="thumb-pick" data-n="${c.n}" aria-pressed="${c.n === t.pick}" title="${esc(c.title)}, ${c.time}s"><img loading="lazy" src="${mediaUrl(c.file)}" alt=""><span class="num">${c.n}</span></button>`).join('')}</div>
+    </div>` : ''}</div>
+    <div class="dlg-foot">${t.can_edit ? `<button class="btn primary" data-action="thumb-apply">Apply changes</button>` : ''}<button class="btn" data-action="thumb-make" data-p="${esc(m.path)}" title="A new Claude pick (about USD 0.10 of usage)">${ic('sparkle')}Ask Claude again</button><button class="btn" data-action="dlg-close">Close</button></div>`, 'thumbdlg');
+}
+async function reopenThumb(path) { await loadMerged(); render(); const m = D.merged.find(x => x.path === path); if (m && m.thumb) thumbDialog(m); }
 
 /* ---------- Music ---------- */
 function creditCell(t) {
@@ -688,8 +714,8 @@ function uploadCard(j) {
 function jobCard(j) {
   if (j.kind === 'upload') return uploadCard(j);
   const steps = j.steps || [], si = Math.min(steps.length - 1, j.step || 0);
-  const name = j.kind === 'merge' ? `Merge: ${esc(j.title)}` : esc(j.title);
-  const sub = j.kind === 'merge' ? `${plural((j.clips || []).length, 'short')}${j.music ? ', ' + esc(base(j.music)) : ''}` : `Model: ${esc(j.model_used || j.model)}`;
+  const name = j.kind === 'merge' ? `Merge: ${esc(j.title)}` : j.kind === 'thumb' ? `Thumbnail: ${esc(j.title)}` : esc(j.title);
+  const sub = j.kind === 'merge' ? `${plural((j.clips || []).length, 'short')}${j.music ? ', ' + esc(base(j.music)) : ''}` : j.kind === 'thumb' ? 'Claude picks the frame (Sonnet)' : `Model: ${esc(j.model_used || j.model)}`;
   const el = dur(j.elapsed);
   if (j.state === 'queued') return `<div class="job"><div class="top">${ic('activity')}<div class="grow"><b>${name}</b><span>${sub}. Waiting for the current job.</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div></div>`;
   if (j.state === 'running') return `<div class="job"><div class="top">${ic('loader', 'spin')}<div class="grow"><b>${name}</b><span>${sub}, <span class="num" data-el="${j.id}">${el}</span> so far</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div>
@@ -698,9 +724,10 @@ function jobCard(j) {
   const u = j.usage;
   const usage = u ? `${u.tokens ? `${Math.round(u.tokens / 1000)}k tokens` : ''}${u.turns ? `, ${u.turns} turns` : ''}` : '';
   if (j.state === 'done') {
-    const acts = j.kind === 'merge' ? `<button class="btn sm" data-action="nav" data-page="merged">Open Merged</button>${j.out ? `<button class="btn sm ghost" data-action="reveal" data-p="${esc(j.out)}">Show in folder</button>` : ''}`
+    const acts = j.kind === 'thumb' ? `<button class="btn sm" data-action="thumb-open-p" data-p="${esc(j.path)}">${ic('image')}View thumbnail</button>`
+      : j.kind === 'merge' ? `<button class="btn sm" data-action="nav" data-page="merged">Open Merged</button>${j.out ? `<button class="btn sm ghost" data-action="reveal" data-p="${esc(j.out)}">Show in folder</button>` : ''}`
       : `<button class="btn sm" data-action="nav" data-page="shorts">View shorts</button>`;
-    return `<div class="job"><div class="top"><span class="ok">${ic('check')}</span><div class="grow"><b>${name}</b><span>${j.kind === 'merge' ? 'Saved' : `${j.clips != null ? plural(j.clips, 'short') : 'Done'}`}, took ${el}${usage ? ', ' + usage : ''}</span></div></div>
+    return `<div class="job"><div class="top"><span class="ok">${ic('check')}</span><div class="grow"><b>${name}</b><span>${j.kind === 'merge' || j.kind === 'thumb' ? 'Saved' : `${j.clips != null ? plural(j.clips, 'short') : 'Done'}`}, took ${el}${usage ? ', ' + usage : ''}</span></div></div>
       ${j.report ? `<div class="report">${esc(j.report)}</div>` : ''}<div class="jobacts">${acts}</div></div>`;
   }
   const retry = j.kind === 'highlight' && j.state === 'failed' ? `<button class="btn sm" data-action="retry" data-p="${esc(j.path)}">${ic('retry')}Retry</button>` : '';
@@ -857,6 +884,8 @@ function uploadDialog(m) {
      <div class="two"><label>Made for kids<select id="yKids"><option value="0" selected>No, it's not made for kids</option><option value="1">Yes, it's made for kids</option></select></label>
       <label>Category<select disabled><option>Gaming</option></select></label></div>
      <label class="checkline"><input type="checkbox" id="yNotify" checked> Notify subscribers</label>
+     ${m.thumb ? `<div class="ythumb"><img src="${thumbFile(m.thumb.path, m.thumb.v)}" alt=""><label class="checkline"><input type="checkbox" id="yThumb" ${short ? '' : 'checked'}> Use this thumbnail${short ? '<small class="note">YouTube usually ignores custom thumbnails on Shorts</small>' : '<small class="note">Needs a verified channel (youtube.com/verify)</small>'}</label></div>`
+       : `<p class="note" style="margin:0">No thumbnail yet. Use Make thumbnail on the card first if you want one.</p>`}
      ${short ? `<p class="note" style="margin:0">This is vertical and ${dur(m.len)} long, so YouTube shows it as a Short automatically.</p>` : ''}
     </div></div>
     <div class="dlg-foot"><button class="btn primary" data-action="yt-upload">${ic('play')}Upload to YouTube</button><button class="btn" data-action="dlg-close">Cancel</button></div>`);
@@ -873,7 +902,7 @@ async function startUpload() {
     publishAt = d.toISOString();
   }
   const r = await API().yt_upload({path: S.uploadPath, title: $('#yTitle').value, description: $('#yDesc').value, tags: $('#yTags').value,
-    privacy: priv === 'scheduled' ? 'private' : priv, publish_at: publishAt, made_for_kids: $('#yKids').value === '1', notify: $('#yNotify').checked});
+    privacy: priv === 'scheduled' ? 'private' : priv, publish_at: publishAt, made_for_kids: $('#yKids').value === '1', notify: $('#yNotify').checked, thumbnail: !!($('#yThumb') && $('#yThumb').checked)});
   if (!r.ok) { toast("Can't upload yet", r.error); return; }
   closeDialog(); S.jobsOpen = true; S.detail = null; S.detailRec = null;
   toast('Upload started', 'Watch it under Jobs. You can keep using the app.');
@@ -935,9 +964,11 @@ async function pollJobs() {
     const prev = prevJobState.get(j.id);
     if (prev && prev !== j.state) {
       if (j.state === 'running' && j.kind === 'highlight') reloadF = true;
+      if (j.kind === 'thumb' && S.page === 'merged') reloadM = true;
       if (j.state === 'done') {
         if (j.kind === 'highlight') { reloadF = reloadS = true; toast(`${j.title}: ${j.clips != null ? plural(j.clips, 'short') : 'done'}`, 'Highlights are ready.', ['View shorts', 'nav', 'shorts']); }
         else if (j.kind === 'upload') { reloadM = true; toast(j.forced_private ? `Uploaded "${j.title}" as Private` : `Uploaded "${j.title}" to YouTube`, j.forced_private ? 'YouTube kept it private. Publish it in YouTube Studio.' : j.out, ['Show jobs', 'show-jobs']); }
+        else if (j.kind === 'thumb') { reloadM = true; toast(`Thumbnail ready: ${j.title}`, String(j.report || '').slice(0, 140), ['View', 'thumb-open-p', '']); S.lastThumb = j.path; }
         else { reloadM = reloadS = true; toast(`Merged "${j.title}"`, `Saved to ${D.roots.merged}`, ['Open Merged', 'nav', 'merged']); }
       } else if (j.state === 'failed') { reloadF = true; toast(`${{merge: 'Merge', upload: 'Upload'}[j.kind] || 'Highlight run'} failed: ${j.title}`, String(j.error || '').slice(0, 160), ['Show jobs', 'show-jobs']); }
       else if (j.state === 'cancelled') reloadF = true;
@@ -1050,6 +1081,25 @@ document.addEventListener('click', async e => {
       toast(r.ok && D.yt.signed_in ? `Signed in as ${D.yt.channel.title}` : "Sign-in didn't finish", r.ok ? (D.yt.error || '') : r.error);
       if (dlg.open) ytGuide(); render(); break; }
     case 'yt-signout': await API().yt_sign_out(); await refreshYt(); toast('Signed out of YouTube'); render(); break;
+    case 'thumb-make': {
+      const r = await API().thumb_make(t.dataset.p);
+      if (!r.ok) { toast("Can't make a thumbnail", r.error); break; }
+      if (dlg.open) closeDialog();
+      toast('Making a thumbnail', 'Claude is picking the best frame. It takes about half a minute.', ['Show jobs', 'show-jobs']);
+      await pollJobs(); render(); break; }
+    case 'thumb-open': { const m = D.merged.find(x => x.id === id); if (m) thumbDialog(m); break; }
+    case 'thumb-open-p': { const p = t.dataset.p || S.lastThumb; if (!p) break; S.page = 'merged'; S.jobsOpen = false; await reopenThumb(p); break; }
+    case 'thumb-layout': {
+      const r = await API().thumb_layout(S.thumbFor, t.dataset.v);
+      if (!r.ok) { toast("Couldn't switch", r.error); break; }
+      document.querySelectorAll('.tlay').forEach(b => b.setAttribute('aria-pressed', b === t));
+      await loadMerged(); render(); break; }
+    case 'thumb-pick': S.thumbPick = +t.dataset.n; document.querySelectorAll('.tframe').forEach(b => b.setAttribute('aria-pressed', b === t)); break;
+    case 'thumb-apply': {
+      t.disabled = true;
+      const r = await API().thumb_edit(S.thumbFor, {pick: S.thumbPick, headline: $('#thHead').value, badge: $('#thBadge').value});
+      if (!r.ok) { t.disabled = false; toast("Couldn't render", r.error); break; }
+      await reopenThumb(S.thumbFor); break; }
     case 'upload-yt': { const m = D.merged.find(x => x.id === id); if (!m) break; t.disabled = true; await refreshYt();
       if (!D.yt.signed_in && D.yt.client) {  // set up before but the sign-in expired (Testing mode: weekly): sign in, then continue
         toast('Signing in to YouTube', 'Finish in your browser. The upload form opens right after.');
@@ -1241,6 +1291,7 @@ async function boot() {
   render();
   if (S.page === 'music' && S.musicTab === 'ncs') ncsSearch();
   if (open && open[2] === 'playbooks') openPlaybooks();
+  if (open && open[2] === 'thumb') { const m = D.merged.find(x => x.thumb); if (m) thumbDialog(m); }
   if (open && open[2] === 'ytguide') { await refreshYt(); ytGuide(); }
   if (DEMO) {
     const long = D.sets.flatMap(s => s.clips).sort((a, b) => b.title.length - a.title.length).slice(0, 4);

@@ -219,6 +219,17 @@ def scan_shorts():
 
 
 # ---------------------------------------------------------------- merged
+def _thumb_info(f):
+    import thumbs
+    meta = thumbs.info(f)
+    if not meta:
+        return None
+    p = thumbs.paths(f)
+    meta.update(path=str(p["use"]), hero_img=str(p["hero"]), badge_img=str(p["badge"]),
+                v=int(p["use"].stat().st_mtime), work=str(p["work"]))
+    return meta
+
+
 def scan_merged():
     root = merged_root()
     out = []
@@ -249,6 +260,7 @@ def scan_merged():
             "fmt": "short" if info["h"] > info["w"] else "long",
             "music": side.get("music"), "style": side.get("style"), "bpm": side.get("bpm"),
             "clips": [c.get("file") for c in side.get("clips", [])],
+            "thumb": _thumb_info(f),
         })
     save_probe_cache()
     return out

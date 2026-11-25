@@ -167,6 +167,10 @@ class Api:
                 "made_for_kids": bool(form.get("made_for_kids")), "notify": bool(form.get("notify", True))}
         if meta["privacy"] not in ("private", "unlisted", "public"):
             meta["privacy"] = "private"
+        if form.get("thumbnail"):
+            import thumbs
+            t = thumbs.paths(p)["use"]
+            meta["thumbnail"] = str(t) if t.exists() else ""
         import youtube
         st = youtube.status()
         if not st["signed_in"]:
@@ -205,6 +209,46 @@ class Api:
                 continue  # already covered by a parent folder
             found = [f for f in found if d.resolve() not in f.resolve().parents] + [d]
         return found
+
+    # ------------------------------------------------------------ thumbnails
+    def thumb_make(self, path):
+        p = Path(path)
+        if not (is_inside(p, [merged_root()]) and p.exists()):
+            return {"ok": False, "error": "That merged video isn't in the Merged folder."}
+        if not p.with_suffix(".json").exists():
+            return {"ok": False, "error": "This video has no edit plan (.json), so its clips are unknown."}
+        jid = self._jobs.add_thumb(str(p), p.stem)
+        return {"ok": bool(jid), "error": "" if jid else "A thumbnail for this video is already being made."}
+
+    def thumb_candidates(self, path):
+        import thumbs
+        w = thumbs.paths(path)["work"] / "candidates.json"
+        try:
+            return json.loads(w.read_text(encoding="utf-8"))["candidates"]
+        except (OSError, ValueError, KeyError):
+            return []
+
+    def thumb_edit(self, path, choice):
+        """Re-render locally (no Claude) with another frame, headline or badge."""
+        import thumbs
+        p = Path(path)
+        if not is_inside(p, [merged_root()]):
+            return {"ok": False, "error": "Not a merged video."}
+        old = thumbs.info(p) or {}
+        new = {**{k: old.get(k) for k in ("pick", "headline", "badge", "layout", "why")}, **(choice or {}), "by": "you"}
+        try:
+            thumbs.render(p, new)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True}
+
+    def thumb_layout(self, path, layout):
+        import thumbs
+        try:
+            thumbs.choose_layout(path, layout)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def rerun_info(self, path):
         rec = Path(path)
@@ -286,6 +330,10 @@ class Api:
                 ok = ledger.recycle(p) if p.exists() else False
                 if ok and p.with_suffix(side).exists():
                     ledger.recycle(p.with_suffix(side))
+                if ok and kind == "merged":  # its thumbnail files go with it
+                    for ext in (".thumb.jpg", ".thumb-hero.jpg", ".thumb-badge.jpg", ".thumb.json"):
+                        if p.with_suffix(ext).exists():
+                            ledger.recycle(p.with_suffix(ext))
                 results.append({"path": str(p), "ok": ok, "reason": "" if ok else "Windows did not move it",
                                 "size": size})
         elif kind == "music":

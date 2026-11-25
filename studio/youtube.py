@@ -137,6 +137,23 @@ def status():
     return out
 
 
+def set_thumbnail(video_id, jpg):
+    """Set a custom thumbnail. Returns "set" or a short reason it wasn't (the upload itself
+    still counts as done). Custom thumbnails need a verified channel (youtube.com/verify)."""
+    from googleapiclient.errors import HttpError
+    from googleapiclient.http import MediaFileUpload
+    try:
+        _service().thumbnails().set(videoId=video_id, media_body=MediaFileUpload(str(jpg), mimetype="image/jpeg")).execute()
+        return "set"
+    except HttpError as e:
+        if e.resp.status == 403:
+            return ("not set: your channel can't use custom thumbnails yet. Verify it at youtube.com/verify "
+                    "(a phone number), then add the thumbnail in YouTube Studio.")
+        return f"not set: {_friendly(e)}"
+    except Exception as e:  # never fail a finished upload over the thumbnail
+        return f"not set: {type(e).__name__}"
+
+
 def upload(path, meta, progress, cancelled):
     """Resumable upload. meta: title, description, tags[], privacy, publish_at (ISO UTC or ''),
     made_for_kids, notify. progress(fraction) is called per chunk; cancelled() is checked between chunks.
