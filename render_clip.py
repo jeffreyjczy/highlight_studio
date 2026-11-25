@@ -7,7 +7,9 @@ highlight video is done later by merge_highlights.py.
 Video is CUT WITHOUT RE-ENCODING (stream copy): the clip has exactly the recording's
 quality and codec (AV1), and rendering takes about a second. Each segment starts on the
 keyframe at or before its planned start (recordings have one every 0.5-1 s), so a clip
-can start up to 1 s early. The actual starts are written back (clips.json / printed).
+can start up to 1 s early. A segment whose keyframe would reach back into the previous
+segment (back-to-back or nearly touching) is cut together with it as one continuous run,
+so no footage plays twice. The actual starts are written back (clips.json / printed).
 Only the audio is re-encoded: game audio, plus the mic track if given, through a limiter
 so loud moments don't clip.
 Clips with a "hold" (freeze frame) segment can't be stream-copied: they are encoded to
@@ -152,23 +154,38 @@ def render(src, out, segs, mic, info):
     tmp = Path(tempfile.mkdtemp(prefix="clip_", dir=Path.home()))
     try:
         parts = []
-        for i, s in enumerate(segs):
-            part = tmp / f"part_{i:02d}.mp4"
-            a = dict(s)
-            if copy:
+        if copy:
+            # A stream-copied piece must start on a keyframe, i.e. up to 1 s before its planned
+            # start. When that would reach back into the previous piece (back-to-back segments,
+            # like the planner's "multi-kill feed" tail, or gaps shorter than the keyframe
+            # spacing), the footage would play twice. Such segments are cut as one continuous run
+            # instead; the segment list keeps them separate (layout hints) but back to back.
+            runs = []
+            for s in segs:
+                a = dict(s)
                 k = keyframe_at_or_before(src, float(s["start"]), info["start_time"])
-                a["start"] = k
+                if runs and k < runs[-1]["end"] - 0.001:
+                    a["start"] = actual[-1]["end"]          # continues the previous piece
+                    runs[-1]["end"] = max(runs[-1]["end"], float(s["end"]))
+                else:
+                    a["start"] = k
+                    runs.append({"start": k, "end": float(s["end"])})
+                actual.append(a)
+            for i, r in enumerate(runs):
+                part = tmp / f"part_{i:02d}.mp4"
                 # seek just past the keyframe so the demuxer lands exactly on it
-                run([FFMPEG, "-v", "error", "-y", "-ss", f"{k + 0.001:.3f}", "-i", str(src),
-                     "-t", f"{float(s['end']) - k:.3f}",
+                run([FFMPEG, "-v", "error", "-y", "-ss", f"{r['start'] + 0.001:.3f}", "-i", str(src),
+                     "-t", f"{r['end'] - r['start']:.3f}",
                      "-filter_complex", audio_filter(mic), "-map", "0:v:0", "-map", "[aout]",
                      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2",
                      "-avoid_negative_ts", "make_zero", str(part)])
-            else:
+                parts.append(part)
+        else:  # re-encoded (a "hold" freeze frame somewhere): frame-exact cuts, no keyframe snapping
+            fps = round(info["fps"])
+            mbps = min(80, max(20, round(30 * (info["w"] * info["h"]) / (1920 * 1080) * max(1.0, fps / 60))))
+            for i, s in enumerate(segs):
+                part = tmp / f"part_{i:02d}.mp4"
                 hold = float(s.get("hold", 0))
-                fps = round(info["fps"])
-                mbps = min(80, max(20, round(30 * (info["w"] * info["h"]) / (1920 * 1080)
-                                             * max(1.0, fps / 60))))
                 vhold = f",tpad=stop_mode=clone:stop_duration={hold}" if hold else ""
                 vf = f"[0:v]setsar=1{vhold},fps={fps},format=yuv420p[v];"
                 run([FFMPEG, "-v", "error", "-y", "-ss", str(s["start"]),
@@ -176,8 +193,8 @@ def render(src, out, segs, mic, info):
                      "-filter_complex", vf + audio_filter(mic, hold), "-map", "[v]", "-map", "[aout]",
                      "-c:v", "h264_amf", "-quality", "quality", "-b:v", f"{mbps}M",
                      "-c:a", "aac", "-b:a", "192k", "-ac", "2", str(part)])
-            parts.append(part)
-            actual.append(a)
+                parts.append(part)
+                actual.append(dict(s))
         listfile = tmp / "list.txt"
         listfile.write_text("".join(f"file '{p.as_posix()}'\n" for p in parts), encoding="utf-8")
         run([FFMPEG, "-v", "error", "-y", "-f", "concat", "-safe", "0",
