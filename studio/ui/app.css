@@ -142,7 +142,7 @@ main{overflow:auto;min-width:0;background:var(--surface);position:relative;displ
 .st-failed{background:var(--bad-soft);color:var(--bad)}
 .st-too_small,.st-recording,.st-original_deleted{background:var(--muted-soft);color:var(--fg2)}
 .pill .ic,.tpill .ic{width:13px;height:13px;stroke-width:2}
-.rec-dot{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:blink 1.4s ease-in-out infinite}
+.rec-dot{width:7px;height:7px;border-radius:50%;background:var(--bad)}
 @keyframes blink{50%{opacity:.25}}
 .progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.35)}
 .progress i{display:block;height:100%;background:var(--warn);transition:width .4s}
