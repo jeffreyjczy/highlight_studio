@@ -122,7 +122,14 @@ class Recorder:
             prev = self._sizes.get(key)
             changed = prev[1] if prev and prev[0] == size else now
             if prev is None and now - st.st_ctime > 30:
-                changed = 0.0  # first look at an old open file: wait for it to grow
+                # first look at an older open file (e.g. the app was just reopened mid-recording):
+                # check right away whether it is still growing instead of waiting for the next poll
+                time.sleep(1.5)
+                try:
+                    with open(p, "rb") as f:
+                        changed = now if f.seek(0, 2) != size else 0.0
+                except OSError:
+                    changed = 0.0
             seen[key] = (size, changed)
             if now - changed <= GROW_WINDOW and (live is None or st.st_ctime > live[1].st_ctime):
                 live = (p, st, size)

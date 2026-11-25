@@ -918,6 +918,8 @@ async function pollJobs() {
   D.jobs = DEMO ? [...DEMO_JOBS, ...r.jobs] : r.jobs; D.watch = r.watch;
   const wasRec = D.rec ? D.rec.recording : null, wasPhase = D.rec ? D.rec.phase : '';
   D.rec = r.rec;
+  if (wasRec === null && r.rec.recording)  // first check after opening the app
+    toast(`Recording in progress: ${r.rec.game}`, `Running for ${recElapsed()}. Stop it with the Stop button or your Adrenalin hotkey.`);
   if (r.rec.phase === 'failed' && wasPhase !== 'failed') toast(wasPhase === 'stopping' ? "Recording didn't stop" : "Recording didn't start", r.rec.error, ['Settings', 'nav', 'settings']);
   let reloadF = wasRec !== null && wasRec !== r.rec.recording, reloadS = false, reloadM = false;
   for (const j of D.jobs) {
