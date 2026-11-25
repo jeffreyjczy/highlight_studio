@@ -423,9 +423,23 @@ function renderFlyout() {
   const host = $('#flyout');
   if (S.jobsOpen) {
     const act = D.jobs.filter(j => j.state === 'queued' || j.state === 'running'), done = D.jobs.filter(j => !(j.state === 'queued' || j.state === 'running'));
-    host.innerHTML = `<div class="flyout" role="dialog" aria-label="Jobs"><div class="flyhead"><h2>Jobs</h2><button class="iconbtn" data-action="toggle-jobs" aria-label="Close">${ic('x')}</button></div>
-     <div class="flybody">${act.length ? `<div class="sectionlabel">Running</div>${act.map(jobCard).join('')}` : `<div class="qempty">Nothing running. Select recordings on Footage and choose Make highlights.</div>`}
-     ${done.length ? `<div class="sectionlabel"><span>Finished</span><button class="linkbtn" data-action="clear-jobs">Clear</button></div>${done.map(jobCard).join('')}` : ''}</div></div>`;
+    const body = `${act.length ? `<div class="sectionlabel">Running</div>${act.map(jobCard).join('')}` : `<div class="qempty">Nothing running. Select recordings on Footage and choose Make highlights.</div>`}
+     ${done.length ? `<div class="sectionlabel"><span>Finished</span><button class="linkbtn" data-action="clear-jobs">Clear</button></div>${done.map(jobCard).join('')}` : ''}`;
+    // Only rebuild what changed: the elapsed clocks tick in place, so spinners, scroll and
+    // the slide-in animation aren't restarted every second.
+    const sig = body.replace(/data-el="[^"]*">[^<]*</g, '');
+    const fly = host.querySelector('.flyout.jobs');
+    if (!fly) {
+      host.innerHTML = `<div class="flyout jobs" role="dialog" aria-label="Jobs"><div class="flyhead"><h2>Jobs</h2><button class="iconbtn" data-action="toggle-jobs" aria-label="Close">${ic('x')}</button></div><div class="flybody">${body}</div></div>`;
+    } else if (fly.dataset.sig !== sig) {
+      const fb = fly.querySelector('.flybody'), keep = fb.scrollTop;
+      const reports = [...fb.querySelectorAll('.report')].map(r => r.scrollTop);
+      fb.innerHTML = body; fb.scrollTop = keep;
+      fb.querySelectorAll('.report').forEach((r, i) => { r.scrollTop = reports[i] || 0; });
+    } else {
+      for (const j of D.jobs) fly.querySelectorAll(`[data-el="${j.id}"]`).forEach(e => { e.textContent = dur(j.elapsed); });
+    }
+    host.querySelector('.flyout.jobs').dataset.sig = sig;
     return;
   }
   const c = S.detail && clipById.get(S.detail);
@@ -433,7 +447,7 @@ function renderFlyout() {
   const s = setOfClip.get(c.id), q = S.queue.some(p => p.toLowerCase() === c.path.toLowerCase());
   const yt = (label, val, k) => val ? `<div class="yt-row"><div><small>${label}</small><p>${esc(val)}</p></div><button class="iconbtn" data-action="copy" data-k="${k}" aria-label="Copy ${label}">${ic('copy')}</button></div>` : '';
   const parts = c.parts && typeof c.parts === 'object' ? c.parts : null;
-  host.innerHTML = `<div class="flyout" role="dialog" aria-label="${esc(c.title)}"><div class="flyhead"><h2 title="${esc(c.title)}">${esc(c.title)}</h2><button class="iconbtn" data-action="close-detail" aria-label="Close">${ic('x')}</button></div>
+  const html = `<div class="flyout" role="dialog" aria-label="${esc(c.title)}"><div class="flyhead"><h2 title="${esc(c.title)}">${esc(c.title)}</h2><button class="iconbtn" data-action="close-detail" aria-label="Close">${ic('x')}</button></div>
    <div class="flybody"><div class="detail-player"><video controls preload="metadata" src="${mediaUrl(c.path)}"></video></div>
    <div class="cmeta num" style="padding:0">${c.score != null ? `<span>Score ${c.score}</span>` : ''}<span>${dur(c.len)}</span>${c.n != null ? `<span>#${String(c.n).padStart(2, '0')}</span>` : ''}<span>${esc(c.game)}</span>${c.used ? `<span>Used in ${plural(c.used, 'merge')}</span>` : ''}</div>
    ${parts ? `<div class="meters">${[['hook', 'Hook'], ['action', 'Action'], ['payoff', 'Payoff']].map(([k, l]) => `<div class="meter">${l} <span class="num">${parts[k] ?? '-'}/10</span><div><i style="width:${(parts[k] || 0) * 10}%"></i></div></div>`).join('')}</div>` : ''}
@@ -442,6 +456,11 @@ function renderFlyout() {
    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ${q ? '' : 'primary'}" data-action="${q ? 'q-remove' : 'add-one'}" data-p="${esc(c.path)}">${q ? ic('x') + 'Remove from queue' : ic('plus') + 'Add to merge queue'}</button>
     <button class="btn ghost" data-action="reveal" data-p="${esc(c.path)}">${ic('folder')}Show in folder</button><button class="btn ghost danger" data-action="del-one" data-id="${c.id}">${ic('trash')}Delete</button></div>
    <p class="note" style="margin:0">${esc(s ? s.label : '')}</p></div></div>`;
+  // unchanged panel: leave it alone so a playing video keeps playing
+  const cur = host.querySelector('.flyout');
+  if (cur && cur.dataset.sig === html) return;
+  host.innerHTML = html;
+  host.querySelector('.flyout').dataset.sig = html;
 }
 function jobCard(j) {
   const steps = j.steps || [], si = Math.min(steps.length - 1, j.step || 0);
@@ -449,7 +468,7 @@ function jobCard(j) {
   const sub = j.kind === 'merge' ? `${plural((j.clips || []).length, 'short')}${j.music ? ', ' + esc(base(j.music)) : ''}` : `Model: ${esc(j.model_used || j.model)}`;
   const el = dur(j.elapsed);
   if (j.state === 'queued') return `<div class="job"><div class="top">${ic('activity')}<div class="grow"><b>${name}</b><span>${sub}. Waiting for the current job.</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div></div>`;
-  if (j.state === 'running') return `<div class="job"><div class="top">${ic('loader', 'spin')}<div class="grow"><b>${name}</b><span>${sub}, <span class="num">${el}</span> so far</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div>
+  if (j.state === 'running') return `<div class="job"><div class="top">${ic('loader', 'spin')}<div class="grow"><b>${name}</b><span>${sub}, <span class="num" data-el="${j.id}">${el}</span> so far</span></div><button class="btn sm ghost" data-action="cancel" data-id="${j.id}">Cancel</button></div>
     <div class="steps">${steps.map((s, i) => `<i class="${i < si ? 'done' : i === si ? 'now' : ''}"></i>`).join('')}</div>
     <div class="stepname"><span title="${esc(j.activity)}">Step ${si + 1} of ${steps.length}: ${esc(steps[si])}. ${esc(j.activity || '')}</span></div></div>`;
   const u = j.usage;
@@ -607,13 +626,14 @@ async function pollJobs() {
 /* update the parts that change every second without rebuilding the page (keeps hover and scroll) */
 function softUpdate() {
   renderTop();
-  if (S.jobsOpen && !document.querySelector('.flyout:hover')) renderFlyout();
+  if (S.jobsOpen) renderFlyout();
   if (S.page === 'footage') {
     for (const r of D.footage) {
       const j = jobFor(r.path); if (!j || j.state !== 'running') continue;
       const card = document.querySelector(`.card[data-id="${r.id}"]`); if (!card) continue;
       const bar = card.querySelector('.progress i'); if (bar) bar.style.width = jobPct(j) + '%'; else return render();
-      const p = card.querySelector('.pill'); if (p) p.outerHTML = pill(r);
+      const p = card.querySelector('.pill'), np = pill(r);
+      if (p && p.dataset.html !== np) { p.outerHTML = np; const q = card.querySelector('.pill'); if (q) q.dataset.html = np; }
     }
   }
 }
