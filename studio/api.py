@@ -171,6 +171,11 @@ class Api:
                 "--style", o.get("style", "punchy")]
         if o.get("hq"):
             args.append("--hq")
+        # sound mix presets (merge_highlights.py defaults = "balanced": game first, music ducks under it)
+        mix = {"music": ["--music-volume", "-4", "--game-volume", "0.45", "--no-duck"],
+               "musiconly": ["--music-volume", "-2", "--game-volume", "0", "--no-duck"],
+               "balanced": []}.get(o.get("mix", "music"), [])
+        args += mix
         track = self._pick_music(o.get("music", "any"))
         if track:
             args += ["--music", track]

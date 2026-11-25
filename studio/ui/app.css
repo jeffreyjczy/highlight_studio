@@ -366,7 +366,7 @@ dialog.player.portrait{width:auto}
 .vwrap.theater video{width:100%!important;height:100%!important;max-height:none!important}
 .vwrap.theater .vfs{display:none}
 .vwrap.theater .vtop{display:flex;position:absolute;left:0;right:0;top:0;padding:16px 20px 32px;gap:14px;align-items:center;background:linear-gradient(rgba(0,0,0,.75),transparent);transition:opacity .25s}
-.vclose{display:flex;align-items:center;gap:8px;height:38px;padding:0 16px 0 12px;border-radius:19px;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.55);color:#fff;font-size:14px;flex:none}
+.vclose{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px 0 16px;margin-left:auto;border-radius:19px;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.55);color:#fff;font-size:14px;flex:none}
 .vclose .ic{width:18px;height:18px;stroke-width:2}
 .vclose:hover{background:rgba(255,255,255,.22)}
 .vtitle{color:#fff;font-size:15px;font-weight:600;text-shadow:0 1px 3px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

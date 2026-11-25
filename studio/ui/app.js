@@ -57,7 +57,7 @@ const DEMO_JOBS = [
 const D = {footage: [], sets: [], merged: [], tracks: [], jobs: [], watch: {waiting: [], ytal: false}, disk: null, claude: {}, roots: {}, loaded: {}};
 const S = {page: 'footage', view: 'grid', q: '', status: 'all', sort: 'newest', minScore: 0,
   sel: {footage: new Set(), shorts: new Set(), music: new Set()}, queue: [], queueOpen: false, jobsOpen: false,
-  detail: null, collapsed: new Set(), merge: {fmt: 'short', hq: true, style: 'punchy', music: 'any', name: ''},
+  detail: null, collapsed: new Set(), merge: {fmt: 'short', hq: true, style: 'punchy', music: 'any', mix: 'music', name: ''},
   musicTab: 'library', ncsQ: '', ncsItems: null, ncsLoading: false, ncsError: '', genre: 'all', playing: null,
   lookup: null, lookupBusy: false, link: '', settings: {}};
 let clipById = new Map(), clipByPath = new Map(), recById = new Map(), setOfClip = new Map();
@@ -125,7 +125,7 @@ const clipOfPath = p => clipByPath.get(String(p).toLowerCase());
 function videoBox(path, title, autoplay = false) {
   return `<div class="vwrap"><video controls ${autoplay ? 'autoplay' : ''} preload="metadata" controlslist="nofullscreen nodownload noremoteplayback" disablepictureinpicture src="${mediaUrl(path)}"></video>
     <button class="vfs" data-action="fs-enter" title="Full screen (or double-click the video)" aria-label="Full screen">${ic('expand')}</button>
-    <div class="vtop"><button class="vclose" data-action="fs-exit" aria-label="Exit full screen">${ic('x')}<span>Exit full screen</span></button><span class="vtitle">${esc(title)}</span></div></div>`;
+    <div class="vtop"><span class="vtitle">${esc(title)}</span><button class="vclose" data-action="fs-exit" aria-label="Exit full screen"><span>Exit full screen</span>${ic('x')}</button></div></div>`;
 }
 let theaterEl = null, idleT = null;
 function enterTheater(wrap) {
@@ -341,6 +341,7 @@ function renderQueue() {
    <div class="field"><label>Format</label><div class="seg" role="group"><button data-action="fmt" data-v="short" aria-pressed="${S.merge.fmt === 'short'}">Short 9:16</button><button data-action="fmt" data-v="long" aria-pressed="${S.merge.fmt === 'long'}">Long 16:9</button></div></div>
    <div class="field"><label for="musicSel">Music</label><select class="select" id="musicSel"><option value="any" ${S.merge.music === 'any' ? 'selected' : ''}>Shuffle tracks that have a credit${usable.length ? '' : ' (none yet)'}</option>${D.tracks.map(t => `<option value="${esc(t.path)}" ${t.credit_state === 'missing' ? 'disabled' : ''} ${S.merge.music === t.path ? 'selected' : ''}>${esc(trackLabel(t))}${t.credit_state === 'missing' ? ' (add a credit first)' : ''}</option>`).join('')}</select></div>
    <div class="field"><label for="styleSel">Style</label><select class="select" id="styleSel"><option value="punchy" ${S.merge.style === 'punchy' ? 'selected' : ''}>Punchy: zoom and flash on kills</option><option value="clean" ${S.merge.style === 'clean' ? 'selected' : ''}>Clean: plain crossfades</option></select></div>
+   <div class="field"><label for="mixSel">Sound</label><select class="select" id="mixSel">${[['music', 'Music first: game quieter underneath'], ['balanced', 'Game first: music dips on shots'], ['musiconly', 'Music only: no game sound']].map(([v, l]) => `<option value="${v}" ${S.merge.mix === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
    <div class="field"><label>1440p</label><span style="display:flex;align-items:center;gap:8px"><button class="switch" data-action="hq" role="switch" aria-checked="${S.merge.hq}" aria-label="1440p output"></button><span class="note">${S.merge.hq ? 'Higher quality on YouTube' : '1080p'}</span></span></div>
   </div>
   <div class="qactions"><button class="btn" data-action="preview" ${items.length < 2 ? 'disabled' : ''}>${ic('eye')}Preview cuts</button><button class="btn primary" data-action="merge" ${items.length < 2 ? 'disabled' : ''} title="${items.length < 2 ? 'Add at least 2 shorts' : ''}">${ic('stack')}Merge</button></div>`;
@@ -364,7 +365,7 @@ document.addEventListener('dblclick', e => {
   S.queueW = QDEF; lsSet('queueW', QDEF); const q = $('#queue'); if (q) q.style.width = QDEF + 'px';
 });
 window.addEventListener('resize', () => { if (S.queueW && S.queueW > qMax()) { S.queueW = qMax(); const q = $('#queue'); if (q) q.style.width = S.queueW + 'px'; } });
-function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music}}); }
+function saveMergeOpts() { API().settings_set({merge: {fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: S.merge.music, mix: S.merge.mix}}); }
 function bindDrag() {
   const list = $('#qlist'); if (!list) return; let drag = null;
   list.querySelectorAll('.qitem').forEach(li => {
@@ -376,7 +377,7 @@ function bindDrag() {
   });
 }
 function mergeOpts(musicOverride) {
-  return {clips: S.queue, name: S.merge.name || defaultName(), fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, music: musicOverride || S.merge.music};
+  return {clips: S.queue, name: S.merge.name || defaultName(), fmt: S.merge.fmt, hq: S.merge.hq, style: S.merge.style, mix: S.merge.mix || 'music', music: musicOverride || S.merge.music};
 }
 function defaultName() {
   const games = [...new Set(S.queue.map(clipOfPath).filter(Boolean).map(c => c.game))];
@@ -950,6 +951,7 @@ document.addEventListener('change', e => {
   if (id === 'minScore') { S.minScore = +e.target.value; render(); }
   if (id === 'styleSel') { S.merge.style = e.target.value; saveMergeOpts(); }
   if (id === 'musicSel') { S.merge.music = e.target.value; saveMergeOpts(); }
+  if (id === 'mixSel') { S.merge.mix = e.target.value; saveMergeOpts(); }
   if (id === 'genreSel') { S.genre = e.target.value; render(); }
   if (id === 'setModel') { S.settings.valorant_model = e.target.value; API().settings_set({valorant_model: e.target.value}); }
   if (id === 'setJobs') { S.settings.jobs_at_once = +e.target.value; API().settings_set({jobs_at_once: +e.target.value}); }
