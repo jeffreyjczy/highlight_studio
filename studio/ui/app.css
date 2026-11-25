@@ -283,7 +283,9 @@ body.resizing iframe,body.resizing video{pointer-events:none}
 .settings{max-width:780px;display:grid;gap:4px}
 .srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:14px 16px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--r-sm)}
 .srow b{display:block;font-weight:400}
-.srow span{display:block;font-size:12px;color:var(--fg2);overflow-wrap:anywhere}
+.srow>div:first-child>span{display:block;font-size:12px;color:var(--fg2);overflow-wrap:anywhere}
+.srow .okline,.srow .badline{white-space:nowrap}
+.srow .okline .ic,.srow .badline .ic{width:15px;height:15px;stroke-width:2}
 .srow .ctl{display:flex;gap:6px;align-items:center}
 .shead{font:600 14px/20px var(--font-display);margin:18px 0 6px}
 .okline{display:flex;align-items:center;gap:6px;color:var(--ok);font-size:13px;font-weight:600}
