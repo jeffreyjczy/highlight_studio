@@ -222,12 +222,16 @@ function filteredRecs() {
   });
   const sorters = {newest: (a, b) => b.recorded.localeCompare(a.recorded), oldest: (a, b) => a.recorded.localeCompare(b.recorded),
     size: (a, b) => b.size - a.size, length: (a, b) => b.dur - a.dur};
-  return list.sort(sorters[S.sort]);
+  // the live recording first, then files the recorder still holds, then the chosen sort
+  const rank = r => isLive(r) ? 0 : r.status === 'recording' ? 1 : 2;
+  return list.sort((x, y) => rank(x) - rank(y) || sorters[S.sort](x, y));
 }
+function isLive(r) { return !!(D.rec && D.rec.recording && D.rec.path.toLowerCase() === r.path.toLowerCase()); }
+
 function jobPct(j) { return j && j.state === 'running' ? Math.round(((j.step || 0) + 0.5) / (j.steps || []).length * 100) : 0; }
 function pill(r) {
   const st = effStatus(r), j = jobFor(r.path);
-  if (D.rec && D.rec.recording && D.rec.path.toLowerCase() === r.path.toLowerCase())  // live, even while still "too small"
+  if (isLive(r))  // live, even while still "too small"
     return `<span class="pill st-recording"><span class="rec-dot"></span>Recording <span class="num" data-recel>${recElapsed()}</span></span>`;
   if (st === 'done') return `<span class="pill st-done">${ic('check')}${r.clips != null ? plural(r.clips, 'short') : 'Done'}</span>`;
   if (st === 'processing') return `<span class="pill st-processing">${ic('loader', 'spin')}${j ? esc(j.steps[j.step] || 'Processing') : 'Processing'}</span>`;
@@ -259,7 +263,9 @@ function recRow(r) {
 }
 function pageFootage() {
   if (!D.loaded.footage) return loadingPage('Footage');
-  const list = filteredRecs(), games = [...new Set(list.map(r => r.game))].sort();
+  const list = filteredRecs(), liveGame = (list.find(isLive) || list.find(r => r.status === 'recording') || {}).game;
+  // the game being recorded comes first
+  const games = [...new Set(list.map(r => r.game))].sort((x, y) => (y === liveGame) - (x === liveGame) || x.localeCompare(y));
   const total = D.footage.reduce((a, r) => a + r.size, 0), nNew = D.footage.filter(r => r.status === 'new').length;
   let h = `<div class="page"><div class="pagehead"><h1>Footage</h1><span class="sub num">${plural(D.footage.length, 'recording')}, ${size(total)} in ${esc(D.roots.recordings)}. ${nNew} not processed yet.</span></div>
   <div class="toolbar">
